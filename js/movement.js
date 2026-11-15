@@ -9,7 +9,9 @@
 //   stance). W = away from camera, S = toward camera, A/D = strafe.
 // - Velocity-based with accel/decel; speed scales with char.speed.
 // - Jump is a vertical velocity under gravity; landing is a short 'land'
-//   state. No double jump. No combat here — no attacks, no health logic.
+//   state. No double jump. Phase 4: the keyboard also reads combat
+//   edges (getCombatP1/P2) — the combat module (combat.js) owns the
+//   attacks themselves; this file never deals damage.
 
 import * as THREE from 'three';
 
@@ -63,10 +65,34 @@ function shortestAngle(from, to) {
 const P1_KEYS = { fwd: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', run: 'ShiftLeft' };
 const P2_KEYS = { fwd: 'ArrowUp', back: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', jump: 'ShiftRight', run: 'Enter' };
 
+// Phase 4 — combat keys (one config object per fighter; P2 is
+// "separate configurable controls" by construction — rebind by editing
+// these objects). P1 (from the brief): J light punch, K heavy punch,
+// U kick, I heavy kick, L hold = block, O tap = dodge.
+// P2 (brief gave none): Numpad primary + right-hand cluster fallback
+// (laptops without a numpad) — same actions, no clash with P2 movement
+// (arrows/ShiftRight/Enter), P1 combat, or pause (P/Esc).
+export const P1_COMBAT_KEYS = {
+  lightPunch: 'KeyJ', heavyPunch: 'KeyK', kick: 'KeyU', heavyKick: 'KeyI',
+  block: 'KeyL', dodge: 'KeyO',
+};
+export const P2_COMBAT_KEYS = {
+  lightPunch: 'Numpad1', heavyPunch: 'Numpad2', kick: 'Numpad3', heavyKick: 'Numpad0',
+  block: 'NumpadEnter', dodge: 'Numpad5',
+  lightPunchAlt: 'Comma', heavyPunchAlt: 'Period', kickAlt: 'Slash', heavyKickAlt: 'Quote',
+  blockAlt: 'Semicolon', dodgeAlt: 'KeyM',
+};
+
 export function createKeyboardInput({ onPauseKey } = {}) {
   const held = new Set();
   let jumpP1 = false;
   let jumpP2 = false;
+  // Phase 4 — combat edges (queued on non-repeat keydown, consumed on
+  // read, exactly like the jump edges). Block is level (read from held).
+  let attackP1 = null;
+  let dodgeP1 = false;
+  let attackP2 = null;
+  let dodgeP2 = false;
   let enabled = false;
 
   function isFormTarget(e) {
@@ -87,6 +113,22 @@ export function createKeyboardInput({ onPauseKey } = {}) {
     held.add(e.code);
     if (e.code === P1_KEYS.jump) jumpP1 = true;
     if (e.code === P2_KEYS.jump) jumpP2 = true;
+    // Phase 4 — combat edges. Holding an attack key queues ONE attack
+    // (repeats never reach here); the player must re-press to attack
+    // again — that is the anti-spam rule, not a bug.
+    if (e.code === P1_COMBAT_KEYS.lightPunch) attackP1 = 'lightPunch';
+    else if (e.code === P1_COMBAT_KEYS.heavyPunch) attackP1 = 'heavyPunch';
+    else if (e.code === P1_COMBAT_KEYS.kick) attackP1 = 'kick';
+    else if (e.code === P1_COMBAT_KEYS.heavyKick) attackP1 = 'heavyKick';
+    if (e.code === P1_COMBAT_KEYS.dodge) dodgeP1 = true;
+    const p2Attack =
+      (e.code === P2_COMBAT_KEYS.lightPunch || e.code === P2_COMBAT_KEYS.lightPunchAlt) ? 'lightPunch'
+      : (e.code === P2_COMBAT_KEYS.heavyPunch || e.code === P2_COMBAT_KEYS.heavyPunchAlt) ? 'heavyPunch'
+      : (e.code === P2_COMBAT_KEYS.kick || e.code === P2_COMBAT_KEYS.kickAlt) ? 'kick'
+      : (e.code === P2_COMBAT_KEYS.heavyKick || e.code === P2_COMBAT_KEYS.heavyKickAlt) ? 'heavyKick'
+      : null;
+    if (p2Attack) attackP2 = p2Attack;
+    if (e.code === P2_COMBAT_KEYS.dodge || e.code === P2_COMBAT_KEYS.dodgeAlt) dodgeP2 = true;
   }
   function onKeyUp(e) {
     held.delete(e.code);
@@ -113,7 +155,15 @@ export function createKeyboardInput({ onPauseKey } = {}) {
       window.removeEventListener('blur', onBlur);
       held.clear();
     },
-    setEnabled(v) { enabled = !!v; if (!enabled) { held.clear(); jumpP1 = false; jumpP2 = false; } },
+    setEnabled(v) {
+      enabled = !!v;
+      if (!enabled) {
+        held.clear();
+        jumpP1 = false; jumpP2 = false;
+        attackP1 = null; dodgeP1 = false;
+        attackP2 = null; dodgeP2 = false;
+      }
+    },
     getP1() {
       const out = read(P1_KEYS);
       out.jump = jumpP1; jumpP1 = false;
@@ -122,6 +172,32 @@ export function createKeyboardInput({ onPauseKey } = {}) {
     getP2() {
       const out = read(P2_KEYS);
       out.jump = jumpP2; jumpP2 = false;
+      return out;
+    },
+    // Phase 4 — combat input. Edges are consumed on read (one read per
+    // frame per fighter, by the arena tick). Block is level. blockLow =
+    // block + back held; evade = dodge edge + back held. `grounded` is
+    // NOT known here — the arena adds it from the controller.
+    getCombatP1() {
+      const block = held.has(P1_COMBAT_KEYS.block);
+      const out = {
+        attack: attackP1, dodge: dodgeP1,
+        block,
+        blockLow: block && held.has(P1_KEYS.back),
+        evade: dodgeP1 && held.has(P1_KEYS.back),
+      };
+      attackP1 = null; dodgeP1 = false;
+      return out;
+    },
+    getCombatP2() {
+      const block = held.has(P2_COMBAT_KEYS.block) || held.has(P2_COMBAT_KEYS.blockAlt);
+      const out = {
+        attack: attackP2, dodge: dodgeP2,
+        block,
+        blockLow: block && held.has(P2_KEYS.back),
+        evade: dodgeP2 && held.has(P2_KEYS.back),
+      };
+      attackP2 = null; dodgeP2 = false;
       return out;
     },
   };

@@ -38,6 +38,11 @@ export function createFightCamera({ camera, controls, domElement, getFighterA, g
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const pointers = new Map();
   let pinchStart = 0;
+  // Phase 4 — camera shake (trauma): heavy hits only, fight mode only.
+  // Deterministic sine wobble (no Math.random) — amplitude ≤ 0.08 m,
+  // decays over ~0.25 s. Never touches azimuth/elevation/dist math.
+  let trauma = 0;
+  let shakeTime = 0;
 
   function midpoint(out) {
     getFighterA(_a);
@@ -134,6 +139,16 @@ export function createFightCamera({ camera, controls, domElement, getFighterA, g
     const k = reducedMotion ? 1 : 1 - Math.exp(-SMOOTH * dt);
     camera.position.lerp(_desired, k);
     camera.lookAt(_mid.x, _mid.y + LOOK_HEIGHT, _mid.z);
+    // Shake: a transient offset on top of the framed pose. Applied
+    // after lookAt so the view direction jolts, then the next frame's
+    // lerp pulls the camera back — the offset never accumulates.
+    if (trauma > 0) {
+      shakeTime += dt;
+      const amp = trauma * trauma * 0.08;
+      camera.position.x += Math.sin(shakeTime * 47.3) * amp;
+      camera.position.y += Math.cos(shakeTime * 39.1) * amp * 0.7;
+      trauma = Math.max(0, trauma - dt / 0.25);
+    }
   }
 
   // Camera forward on the XZ plane, for camera-relative movement input.
@@ -156,6 +171,14 @@ export function createFightCamera({ camera, controls, domElement, getFighterA, g
     update,
     getForward,
     getMode: () => mode,
+    // Phase 4 — add camera trauma (0..1, clamped). No-op unless the
+    // camera is in fight mode, so shake can never fire during the
+    // cinematic intro (the arena routes the camera exclusively).
+    addShake(amount) {
+      if (mode !== 'fight') return;
+      trauma = Math.max(0, Math.min(1, trauma + (amount || 0)));
+    },
+    getTrauma: () => trauma,
     dispose() {
       domElement.removeEventListener('pointerdown', onPointerDown);
       domElement.removeEventListener('pointermove', onPointerMove);

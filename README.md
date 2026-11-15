@@ -1,4 +1,4 @@
-# RISHU.COM — Phase 3
+# RISHU.COM — Phase 4
 
 Premium 3D browser-based fighting game. **Original branding, UI, characters and visuals only** — nothing copied from FightKaro or any other game.
 
@@ -29,17 +29,29 @@ Premium 3D browser-based fighting game. **Original branding, UI, characters and 
 - **Camera** — third-person fight camera wrapping the arena's OrbitControls: smooth midpoint follow, auto distance from fighter separation, fighters centred and fully visible, drag to adjust the angle, scroll/pinch to zoom (persisted per match); free orbit resumes outside a match.
 - **Cinematic intro** — every arena entry opens with a 3.2 s automatic camera sweep (wide establishing orbit → low pass → rise and push-in → settle, 130° total, never a full revolution) that hands off continuously to the fight camera with no visible cut. Any key or tap skips it; `prefers-reduced-motion` skips it entirely; Pause is a no-op during the intro and the HUD timer only starts once the fight begins. Portrait phones get a ×1.15 distance pull-back so both fighters stay in frame. No UI, character, arena, control or gameplay changes — camera only (`js/cinematicCamera.js`, wired in `js/arena.js`).
 - **Touch controls** — left virtual joystick (P1 only; push to the edge to run) and a JUMP button on the right; pointer capture, no page scroll during play, shown only on touch devices.
-- **HUD** — P1/P2 names + character icons, count-up match timer, health bars that are static labelled placeholders ("HEALTH · PHASE 5" + "PLACEHOLDER"), Pause button / `P` / `Esc` that actually freeze movement and the timer, Resume and Quit to Game Modes.
+- **HUD** — P1/P2 names + character icons, count-up match timer, health bars that are static labelled placeholders ("HEALTH · PHASE 5" + "PLACEHOLDER"), Pause button / `P` / `Esc` that actually freeze movement and the timer, Resume and Quit to Game Modes. (Phase 4 makes the health bars live — see below.)
 - **Animations** — run, jump, land (0.14 s hold), turn (scissor step + torso twist), back, side (lateral steps + lean), all blended on transition (0.05–0.15 s) with a shared walk phase so walk↔run never snaps a leg.
 - **Boundaries** — fighters cannot leave the ring (radius 4.6) or pass through each other (min separation 1.0 m); both always face the opponent with smooth shortest-arc turning.
 
-## What is NOT in Phase 3 (honest list)
+## What is in Phase 4
 
-- Combat: punches, kicks, blocks, specials — later phase
-- Health bars, rounds, win/lose — later phase (bars are Phase 5 placeholders)
-- CPU AI — later phase (in Player vs Computer the CPU fighter stands in guard)
+- **Attacks** — Light Punch (`J`), Heavy Punch (`K`), Kick (`U`), Heavy Kick (`I`), each with real 3D animation (startup / active / recovery), duration, cooldown, range and hitstun. P2 (Two Player Local): Numpad `1` / `2` / `3` / `0` (fallback `,` / `.` / `/` / `'`), all in one `P2_COMBAT_KEYS` config object in `js/movement.js`. No air attacks, no spam: an attack cannot start during an incompatible animation, and holding an attack key queues one attack only.
+- **Damage (deterministic, no random numbers)** — `round(base × (0.8 + 0.04·strength) × (1.15 − 0.03·defense) × comboScale)`, reach scaled by the attacker's Range stat (`reach = base × (0.9 + 0.025·range)`). Worked examples (attacker → defender): Rishu→Kabir 4 / 8 / 6 / 10, Dev→Zara 5 / 10 / 7 / 13, Ayaan→Meera 5 / 9 / 7 / 12, Zara→Dev 4 / 8 / 6 / 10 (Light / Heavy Punch / Kick / Heavy Kick). One hit per attack by construction: a single hit test on the active window's first frame, a facing guard, and a `hitDone` flag.
+- **Defense** — Block (`L`, hold): high guard blocks high + mid, low guard (`L`+`S`) blocks mid + low; blocked hits deal small chip damage and push the defender back. Dodge (`O`): a 0.28 s dash with i-frames 0.05–0.25 s; Backward Evade (`S`+`O`): 1.8 m straight back, i-frames 0.05–0.30 s. P2: Numpad Enter block, Numpad 5 dodge (fallback `;` / `M`).
+- **Combos** — a 1.2 s window measured in **sim-time** (the arena's accumulated dt), not wall-clock time, so the window cannot expire between landed hits on a slow device — three attacks are 1.02 s of sim, which is over 1.2 s of wall time below ~15 fps. A counter appears at 2+ hits, damage scaling ×1.0 (hits 1–2), ×0.9 (3–4), ×0.8 (5+), chain buffering (0.35 s, one buffered attack, cleared on hit), and interruption (a whiff, a dodge, or the opponent blocking breaks the chain).
+- **Hit detection & reactions** — range-only hits (no hits from unrealistic distance), hitstun that locks the defender's movement (0.22–0.50 s by attack), knockback on heavy attacks, hit-reaction animations (`hit` / `hitHeavy`), and a KO fall at 0 HP.
+- **Effects** — subtle hit flash on the defender, small camera shake on heavy hits only (`camera.js` `addShake()`, fight mode only — never during the cinematic intro), hitstop freeze (0.04 s heavy punch, 0.06 s heavy kick), and punch/kick/block/dodge/KO sounds synthesised with WebAudio (`js/combatAudio.js`, zero audio files) that respect the Settings sound toggle and never throw.
+- **Health & KO** — 100 HP per fighter, live HUD bars (burnt-orange low-health state at ≤ 25 HP), KO at 0 HP with a Rematch / Quit overlay reusing the pause box; Rematch restarts the same mode and fighters with the cinematic intro again. Single-round KO — no rounds yet.
+- **Touch combat** — LP / HP / KICK / HK tap buttons, hold-to-block BLOCK, tap DODGE, in a 3×2 grid beside JUMP (P1 only, ≥ 44 px targets). Touch block is high guard only (no low guard on touch).
+- **Integration rule (the setFighters lesson)** — the arena tick calls `combat.syncAnimator()` AFTER the movement controllers and BEFORE `animator.update`, or the controllers would overwrite attack / hit / block poses with idle in the same frame. Combat updates run BEFORE the controllers so hit tests use pre-move positions.
+
+## What is NOT in Phase 4 (honest list)
+
+- Special attacks — hooks/stub only (`trySpecial()` returns `{ ok: false, reason: 'phase-5' }`), no input bound, no UI
+- Rounds — single-round KO only; no best-of, no round timer
+- CPU AI — later phase (in Player vs Computer the CPU fighter stands in guard and only reacts)
 - Online Multiplayer — later phase, marked Coming Soon in the UI
-- No visual browser confirmation in this VM (no Chromium/Playwright) — open `http://localhost:8000` in a real browser to confirm movement, camera follow, joystick feel and 60 FPS.
+- No visual browser confirmation in this VM (no Chromium/Playwright) — open `http://localhost:8000` in a real browser to confirm combat feel, hit reactions and 60 FPS.
 
 ## Tech
 
@@ -47,7 +59,7 @@ Plain HTML / CSS / JS — no build step, no framework.
 
 - Three.js `0.160.0` via CDN ES modules (import map in `index.html`)
 - WebGL rendering, `OrbitControls` for the arena camera (wrapped by the Phase 3 fight camera)
-- Modular files: `js/main.js` (boot + loading), `js/arena.js` (Three.js arena scene + match lifecycle), `js/menu.js` (screens/modals/settings/character select), `js/characters.js` (fighter data + stats), `js/fighterModels.js` (procedural 3D models), `js/fighterAnimations.js` (animation state machine), `js/characterPreview.js` (live 3D preview renderer), `js/movement.js` (keyboard input + fighter controller), `js/camera.js` (fight camera), `js/touchControls.js` (virtual joystick + jump), `js/hud.js` (match HUD + pause)
+- Modular files: `js/main.js` (boot + loading), `js/arena.js` (Three.js arena scene + match lifecycle), `js/menu.js` (screens/modals/settings/character select), `js/characters.js` (fighter data + stats), `js/fighterModels.js` (procedural 3D models), `js/fighterAnimations.js` (animation state machine), `js/characterPreview.js` (live 3D preview renderer), `js/movement.js` (keyboard input + fighter controller), `js/camera.js` (fight camera), `js/touchControls.js` (virtual joystick + jump), `js/hud.js` (match HUD + pause), `js/combat.js` (Phase 4 — combat state machine, damage, hit detection), `js/comboSystem.js` (Phase 4 — combo tracking + scaling), `js/combatAudio.js` (Phase 4 — WebAudio synth sound effects)
 
 ## Project structure
 
@@ -60,8 +72,11 @@ rishu-com/
   js/menu.js
   js/characters.js
   js/fighterModels.js       # Phase 2 — procedural fighter models
-  js/fighterAnimations.js   # Phase 2 — idle / walk / victory / select
+  js/fighterAnimations.js   # Phase 2 — idle / walk / victory / select (+ Phase 4 combat poses)
   js/characterPreview.js    # Phase 2 — live 3D preview renderer
+  js/combat.js              # Phase 4 — combat state machine, damage, hit detection
+  js/comboSystem.js         # Phase 4 — combo tracking + damage scaling
+  js/combatAudio.js         # Phase 4 — WebAudio synth sound effects
   assets/            # reserved for future art; logo is inline SVG (no external images)
   README.md
 ```

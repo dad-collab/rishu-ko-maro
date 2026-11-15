@@ -527,7 +527,7 @@ export function initMenu(api) {
     soundToggle.addEventListener('change', () => {
       settings.sound = soundToggle.checked;
       saveSettings(settings);
-      showToast(settings.sound ? 'Sound on.' : 'Sound off. (No audio in Phase 2 preview.)');
+      showToast(settings.sound ? 'Sound on.' : 'Sound off.');
     });
   }
   if (qualitySelect) {

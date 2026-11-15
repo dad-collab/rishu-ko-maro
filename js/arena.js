@@ -1,11 +1,18 @@
-// RISHU.COM — Phase 3 — arena.js
-// Three.js fighting-arena scene. Phase 3: the two selected fighters are
-// controllable — walk / run / jump with keyboard or touch, a third-person
-// fight camera, HUD + pause. No combat runs in Phase 3 (no attacks,
-// damage, health logic, rounds) — health bars are Phase 5 placeholders.
-// Responsibilities: scene, lighting, shadows, floor texture, camera,
-// match lifecycle (startMatch / beginMatch / stopMatch), idle orbit,
-// resize, visibility pause, quality switching.
+// RISHU.COM — Phase 4 — arena.js
+// Three.js fighting-arena scene. Phase 4: full combat on top of the
+// Phase 3 movement system — attacks, block, dodge, combos, deterministic
+// damage, live health bars, KO. No rounds / Special / CPU AI yet
+// (Phase 5). Responsibilities: scene, lighting, shadows, floor texture,
+// camera, match lifecycle (startMatch / beginMatch / stopMatch), idle
+// orbit, resize, visibility pause, quality switching.
+//
+// Tick order (Phase 4 — see PHASE4-PLAN.md §3; the order is the contract):
+// combat updates BEFORE the movement controllers (hit tests use the
+// pre-move positions), movement is zeroed where combat locks it, then
+// controllers → separation → combat.syncAnimator() (re-asserts combat
+// poses AFTER the controllers, or attacks never show) → animators →
+// camera → HUD sync. The combat module is the ONLY decider of damage;
+// this file routes inputs and events, never computes a hit itself.
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -16,6 +23,9 @@ import { createFightCamera } from './camera.js';
 import { createCinematicCamera } from './cinematicCamera.js';
 import { createTouchControls } from './touchControls.js';
 import { createHud } from './hud.js';
+import { createFighterCombat, ATTACKS, DEFENSE, flashFighter } from './combat.js';
+import { createComboTracker, comboScale } from './comboSystem.js';
+import { createCombatAudio } from './combatAudio.js';
 
 const QUALITY = {
   low: { pixelRatio: 1, shadows: false, antialias: false },
@@ -350,6 +360,28 @@ export function createArena(container, opts = {}) {
   let keyboard = null;
   let touch = null;
   let hud = null;
+  // Phase 4 — combat state. matchOver: a KO has frozen the match (the
+  // KO overlay owns the screen until Rematch/Quit). hitstop: seconds of
+  // tick-level freeze left after a heavy hit. simSec: accumulated
+  // SIM time (sum of clamped dt) of the current match — the combo
+  // window's clock. It must be sim-time, not the wall clock: every
+  // other combat timing (attack durations, hitstun, i-frames, chain
+  // buffer) is sim-time, and a wall-clock window expires between
+  // landed hits on any device below ~15 fps (three attacks are 1.02 s
+  // of sim but take >1.2 s of wall there), making combos impossible.
+  // flashTimer: the pending hit-flash restore (cleared on stopMatch so
+  // a disposed model is never touched).
+  let combatA = null;
+  let combatB = null;
+  let combo = null;
+  let audio = null;
+  let matchOver = false;
+  let hitstop = 0;
+  let simSec = 0;
+  let flashTimer = 0;
+
+  const ZERO_MOVE = { mx: 0, mz: 0, run: false, jump: false };
+  const ZERO_COMBAT = { attack: null, block: false, blockLow: false, dodge: false, evade: false, grounded: true };
 
   function readP1Input() {
     const input = keyboard ? keyboard.getP1() : { mx: 0, mz: 0, run: false, jump: false };
@@ -367,8 +399,134 @@ export function createArena(container, opts = {}) {
     return input;
   }
 
+  // Phase 4 — combat input for one fighter ('p1' | 'p2'). Keyboard
+  // combat edges (getCombatP1/P2 — consumed on read, once per frame)
+  // merged with the touch combat edges (consumeCombat — P1 only).
+  // `grounded` comes from the fighter's own controller. The dodge
+  // direction is the current camera-relative move input (or null — the
+  // combat module dashes backward when none is supplied).
+  const _fwdV = new THREE.Vector3();
+  const _rightV = new THREE.Vector3();
+  const _dodgeDir = new THREE.Vector3();
+  const UP_V = new THREE.Vector3(0, 1, 0);
+
+  function dodgeDirFor(moveInput) {
+    if (!fightCamera) return null;
+    fightCamera.getForward(_fwdV);
+    _fwdV.y = 0;
+    if (_fwdV.lengthSq() < 0.001) _fwdV.set(0, 0, -1);
+    _fwdV.normalize();
+    _rightV.crossVectors(_fwdV, UP_V).normalize();
+    _dodgeDir.set(0, 0, 0)
+      .addScaledVector(_fwdV, moveInput.mz || 0)
+      .addScaledVector(_rightV, moveInput.mx || 0);
+    if (_dodgeDir.lengthSq() < 0.01) return null;
+    _dodgeDir.normalize();
+    return { x: _dodgeDir.x, z: _dodgeDir.z };
+  }
+
+  function readCombatInput(which, moveInput) {
+    const isP1 = which === 'p1';
+    const kb = keyboard
+      ? (isP1 ? keyboard.getCombatP1() : keyboard.getCombatP2())
+      : { attack: null, block: false, blockLow: false, dodge: false, evade: false };
+    const tc = (isP1 && touch) ? touch.consumeCombat() : null;
+    const ctrl = isP1 ? ctrlA : ctrlB;
+    return {
+      attack: kb.attack || (tc && tc.attack) || null,
+      block: !!(kb.block || (tc && tc.block)),
+      blockLow: !!kb.blockLow,
+      dodge: !!(kb.dodge || (tc && tc.dodge)),
+      evade: !!kb.evade,
+      dodgeDir: dodgeDirFor(moveInput),
+      grounded: ctrl ? ctrl.isGrounded : true,
+    };
+  }
+
+  // Phase 4 — one place that turns combat events into sound, flash,
+  // shake, hitstop, combo bookkeeping and the KO flow. The handler is
+  // registered on a fighter's combat object, so `id` is the fighter
+  // that EMITTED the event: for 'hit'/'blocked'/'whiff'/'dodged' that
+  // is the DEFENDER (the attacker is the other fighter); for
+  // 'block-start'/'dodge'/'evade' it is the ACTOR (whose outgoing
+  // combo ends). Sound names map 1:1 to combatAudio profiles.
+  const SOUND_FOR_ATTACK = {
+    lightPunch: 'punchLight', heavyPunch: 'punchHeavy',
+    kick: 'kick', heavyKick: 'kickHeavy',
+  };
+
+  function onKo(winnerId) {
+    if (matchOver) return;
+    matchOver = true;
+    if (hud) hud.stop();
+    if (audio) audio.play('ko');
+    if (hud && lastMatch) {
+      const winnerChar = winnerId === 'A' ? lastMatch.charA : lastMatch.charB;
+      hud.showKo(winnerChar ? winnerChar.name : 'Winner',
+        () => { // Rematch: same mode, same pair, fresh match + intro again
+          if (lastMatch) {
+            startMatch(lastMatch.mode, lastMatch.charA, lastMatch.charB);
+            beginMatch();
+          }
+        },
+        () => { if (opts.onQuitMatch) opts.onQuitMatch(); });
+    }
+  }
+
+  function handleCombatEvent(id, ev) {
+    const attackerId = id === 'A' ? 'B' : 'A';
+    const defenderModel = (id === 'A' ? fighterA : fighterB).model;
+    switch (ev.type) {
+      case 'hit': {
+        combo.recordHit(attackerId, ev.attack, simSec);
+        // Getting hit ends YOUR outgoing combo (comboSystem.js) — the
+        // defender's count resets here, not only on the 1.2 s expiry.
+        combo.recordInterrupted(id);
+        if (audio) audio.play(SOUND_FOR_ATTACK[ev.attack] || 'punchLight');
+        if (flashTimer) { clearTimeout(flashTimer); flashTimer = 0; }
+        flashTimer = flashFighter(defenderModel);
+        const def = ATTACKS[ev.attack];
+        if (def && def.shake > 0 && fightCamera) fightCamera.addShake(def.shake);
+        if (def && def.shake > 0) {
+          hitstop = ev.attack === 'heavyKick' ? DEFENSE.HITSTOP_HEAVY_KICK : DEFENSE.HITSTOP_HEAVY;
+        }
+        if (ev.ko) onKo(attackerId);
+        break;
+      }
+      case 'blocked': {
+        if (audio) audio.play('block');
+        if (ev.hp <= 0) onKo(attackerId);
+        break;
+      }
+      case 'whiff': {
+        combo.recordWhiff(attackerId);
+        if (audio) audio.play('whiff');
+        break;
+      }
+      case 'dodged':
+        break; // clean miss — no sound, no counter, no reaction
+      case 'block-start':
+      case 'dodge':
+      case 'evade': {
+        // Your own block/dodge ends YOUR outgoing combo.
+        combo.recordInterrupted(id);
+        if (ev.type !== 'block-start' && audio) audio.play('dodge');
+        break;
+      }
+      case 'attack-start':
+      case 'ko':
+        // 'ko' is also emitted by enterKo, but the KO flow is driven by
+        // the 'hit' / 'blocked' events (they carry the winner) — ignore.
+        break;
+      default:
+        break;
+    }
+  }
+
   function togglePause() {
     if (!matchRunning || !hud) return;
+    // A finished match cannot be paused — the KO overlay owns the box.
+    if (matchOver) return;
     // Pause is a no-op while the cinematic intro is playing (there is
     // nothing to pause yet, and pausing would freeze the intro mid-sweep).
     if (cinematic && cinematic.getState() === 'playing') return;
@@ -437,6 +595,29 @@ export function createArena(container, opts = {}) {
       touch.setEnabled(false); // enabled by beginMatch (touch devices only)
     }
 
+    // Phase 4 — combat. The combo tracker is created FIRST (the combat
+    // scale callbacks close over it). PvC has no AI: combatB still
+    // exists (it reacts — hitstun, block, KO) but the tick feeds it
+    // ZERO_COMBAT, so it never initiates.
+    combo = createComboTracker();
+    const makeCombat = (which, char, ctrl, oppCtrl) => createFighterCombat({
+      char,
+      animator: which === 'A' ? fighterA.animator : fighterB.animator,
+      getPosition: () => ctrl.position,
+      getOpponentPosition: () => oppCtrl.position,
+      getFacing: () => ctrl.facing,
+      // Damage scale is for the NEXT hit (see comboSystem.js).
+      getComboScale: () => combo.getScaleForNext(which),
+      onEvent: (ev) => handleCombatEvent(which, ev),
+    });
+    combatA = makeCombat('A', charA, ctrlA, ctrlB);
+    combatB = makeCombat('B', charB, ctrlB, ctrlA);
+    audio = createCombatAudio({ enabled: opts.sound !== false });
+
+    matchOver = false;
+    hitstop = 0;
+    simSec = 0;
+
     // Cinematic intro: created here, AFTER fightCamera/HUD/input exist
     // (start() can call onDone synchronously on reduced motion), but
     // only STARTED by beginMatch() once the arena screen is visible.
@@ -493,6 +674,15 @@ export function createArena(container, opts = {}) {
     if (cinematic) { cinematic.dispose(); cinematic = null; }
     if (fightCamera) { fightCamera.dispose(); fightCamera = null; }
     if (hud) { hud.destroy(); hud = null; }
+    // Phase 4 — combat teardown. Clear the pending hit-flash restore
+    // first: it touches a model that stopMatch may rebuild next.
+    if (flashTimer) { clearTimeout(flashTimer); flashTimer = 0; }
+    if (audio) { audio.dispose(); audio = null; }
+    combatA = null;
+    combatB = null;
+    if (combo) { combo.reset(); combo = null; }
+    matchOver = false;
+    hitstop = 0;
     ctrlA = null;
     ctrlB = null;
     matchBuilt = false;
@@ -519,28 +709,59 @@ export function createArena(container, opts = {}) {
     if (!running || document.hidden) return;
     const dt = Math.min(0.05, clock.getDelta());
     const t = clock.getElapsedTime();
-    if (matchRunning && !paused) {
-      // Live match: input -> controllers -> separation -> animators -> camera.
-      // In PvC the CPU fighter gets ZERO input (no AI in Phase 3) — it
-      // stands in guard, facing the player. The P2 keys are still read
-      // (to consume the jump edge) but discarded outside 2P Local, so
-      // arrow keys can never move the CPU fighter.
+    if (matchRunning && !paused && !matchOver) {
+      // Live match (Phase 4 order — the contract): combat updates
+      // BEFORE the movement controllers (hit tests use the pre-move
+      // positions), movement is zeroed where combat locks it, then
+      // controllers -> separation -> combat.syncAnimator() (re-asserts
+      // combat poses AFTER the controllers, or attacks never show) ->
+      // animators -> camera -> HUD sync.
+      // In PvC the CPU fighter gets ZERO input (no AI) — it stands in
+      // guard, facing the player. The P2 keys are still read (to consume
+      // the jump/combat edges) but discarded outside 2P Local, so arrow
+      // keys can never move the CPU fighter.
+      simSec += dt;
+      if (combo) { combo.expire('A', simSec); combo.expire('B', simSec); }
       const p1in = readP1Input();
-      const rawP2 = keyboard ? keyboard.getP2() : { mx: 0, mz: 0, run: false, jump: false };
-      const p2in = (lastMatch && lastMatch.mode === '2p')
-        ? rawP2
-        : { mx: 0, mz: 0, run: false, jump: false };
-      if (ctrlA) ctrlA.update(dt, p1in);
-      if (ctrlB) ctrlB.update(dt, p2in);
-      if (ctrlA && ctrlB) resolveSeparation(ctrlA, ctrlB);
-      fighterA.animator.update(dt, t);
-      fighterB.animator.update(dt, t);
+      const rawP2 = keyboard ? keyboard.getP2() : { ...ZERO_MOVE };
+      const p2in = (lastMatch && lastMatch.mode === '2p') ? rawP2 : { ...ZERO_MOVE };
+      const c1in = readCombatInput('p1', p1in);
+      const c2in = readCombatInput('p2', rawP2); // consumed even in PvC
+      const c2use = (lastMatch && lastMatch.mode === '2p') ? c2in : ZERO_COMBAT;
+      if (hitstop > 0) {
+        // Heavy-hit freeze: skip the sim (combat/controllers/
+        // animators); the camera still updates and the frame renders.
+        hitstop -= dt;
+      } else {
+        if (combatA) combatA.update(dt, c1in, combatB);
+        if (combatB) combatB.update(dt, c2use, combatA);
+        if (combatA && combatA.isMovementLocked()) { p1in.mx = 0; p1in.mz = 0; p1in.run = false; p1in.jump = false; }
+        if (combatB && combatB.isMovementLocked()) { p2in.mx = 0; p2in.mz = 0; p2in.run = false; p2in.jump = false; }
+        if (ctrlA) ctrlA.update(dt, p1in);
+        if (ctrlB) ctrlB.update(dt, p2in);
+        if (ctrlA && ctrlB) resolveSeparation(ctrlA, ctrlB);
+        if (combatA) combatA.syncAnimator();
+        if (combatB) combatB.syncAnimator();
+        fighterA.animator.update(dt, t);
+        fighterB.animator.update(dt, t);
+        if (hud && combatA && combatB && combo) {
+          hud.setHealth('p1', combatA.getHp(), combatA.getMaxHp());
+          hud.setHealth('p2', combatB.getHp(), combatB.getMaxHp());
+          hud.setCombo('p1', combo.getCount('A'));
+          hud.setCombo('p2', combo.getCount('B'));
+        }
+      }
       // Cinematic intro owns the camera until it hands off; the fight
       // camera takes over after that (never both in one frame).
       if (cinematic && cinematic.getState() === 'playing') cinematic.update(dt);
       else if (fightCamera) fightCamera.update(dt);
       // No controls.update() in fight mode — OrbitControls is disabled
       // and must not fight the camera lerp.
+    } else if (matchOver && !paused) {
+      // KO frozen frame: the KO fall still blends (animator updates),
+      // but nothing else moves and the camera holds its last pose.
+      fighterA.animator.update(dt, t);
+      fighterB.animator.update(dt, t);
     } else if (!paused) {
       // Preview / idle: breathing + guard sway from the animator, free orbit.
       fighterA.animator.update(dt, t);

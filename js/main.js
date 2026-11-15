@@ -100,6 +100,8 @@ async function boot() {
   try {
     arena = createArena(arenaWrap, {
       quality: settings.quality,
+      // Phase 4 — combat sound effects (WebAudio synth) respect this.
+      sound: settings.sound,
       onProgress: (pct, text) => setProgress(20 + Math.round(pct * 0.75), text),
       onError: (msg) => showError(msg),
       // HUD Quit button: stop the match, then go to Game Modes.

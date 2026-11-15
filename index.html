@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="description" content="RISHU.COM — a premium 3D browser fighting game. Phase 3: move, run and jump in the arena — six original fighters, live 3D character preview, movement, camera and touch controls." />
+  <meta name="description" content="RISHU.COM — a premium 3D browser fighting game. Phase 4: real combat — punches, kicks, blocks, dodges, combos, live health and KO — six original fighters, live 3D character preview, movement, camera and touch controls." />
   <meta name="theme-color" content="#0E1B2E" />
   <title>RISHU.COM — 3D Fighting Game</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230E1B2E'/%3E%3Cpath d='M20 46V18h18l5 5-5 5H20m13 0 9 18' fill='none' stroke='%23F2EDE3' stroke-width='3.5' stroke-linejoin='miter'/%3E%3Ccircle cx='33' cy='28' r='2.6' fill='%23BC5222'/%3E%3C/svg%3E" />
@@ -29,7 +29,7 @@
       <circle cx="48" cy="42" r="4" fill="#BC5222"/>
     </svg>
     <h1 class="loading-name">RISHU<span>.COM</span></h1>
-    <p class="loading-tag">Premium 3D Fighting — Phase 3</p>
+    <p class="loading-tag">Premium 3D Fighting — Phase 4</p>
     <div class="loading-track"><span id="loading-bar"></span></div>
     <p id="loading-text">Loading RISHU.COM…</p>
     <p id="loading-error" class="loading-error" hidden></p>
@@ -350,10 +350,11 @@
           <button class="btn btn-small btn-ghost" id="btn-back-arena" type="button">← Change Fighters</button>
         </div>
         <div class="arena-note">
-          <b>Phase 3 — Movement.</b> This is the real 3D arena with your selected
+          <b>Phase 4 — Combat.</b> This is the real 3D arena with your selected
           fighters — the same procedural 3D models from character select — and now
-          you can move them: walk, run and jump, with a camera that follows the
-          fight. Combat (punches, blocks, health, rounds) is a later phase.
+          you can fight: punches, kicks, blocks, dodges and combos, with live
+          health bars and a KO finish. Damage is fixed per fighter (no random
+          numbers). Special moves and rounds are a later phase.
           Nothing here is faked.
         </div>
         <div class="arena-frame">
@@ -363,7 +364,7 @@
           <span class="tick br" aria-hidden="true"></span>
           <div id="arena-wrap"></div>
         </div>
-        <p class="arena-caption">WASD move · Space jump · Shift run · P2: arrows + Right Shift + Enter · Drag to adjust the camera · Touch: left joystick + JUMP</p>
+        <p class="arena-caption">WASD move · Space jump · Shift run · J light punch · K heavy punch · U kick · I heavy kick · L block (L+S low guard) · O dodge · P2: arrows + Numpad 1/2/3/0, Numpad Enter block, Numpad 5 dodge · Drag to adjust the camera · Touch: left joystick + JUMP + combat buttons</p>
         <div class="arena-actions">
           <button class="btn" id="btn-modes" type="button">Game Modes</button>
           <button class="text-link" id="btn-phase2" type="button">What’s next?</button>
@@ -388,10 +389,10 @@
         <div class="foot-col">
           <h4>About</h4>
           <button class="foot-link" id="btn-about" type="button">About RISHU.COM</button>
-          <p>Phase 3 — six fighters, live 3D preview, movement, camera and touch controls. Fighting gameplay is a later phase.</p>
+          <p>Phase 4 — six fighters, live 3D preview, movement, camera, touch controls and real combat: punches, kicks, blocks, dodges, combos, live health and KO.</p>
         </div>
       </div>
-      <p class="colophon">RISHU.COM — Phase 3 · Original game, original fighters, original branding.</p>
+      <p class="colophon">RISHU.COM — Phase 4 · Original game, original fighters, original branding.</p>
     </footer>
   </div>
 
@@ -399,10 +400,10 @@
   <div class="modal" id="modal-how" role="dialog" aria-modal="true" aria-labelledby="how-title" aria-hidden="true">
     <div class="modal-box">
       <div class="modal-close-row">
-        <h2 id="how-title">How to Play — Phase 3</h2>
+        <h2 id="how-title">How to Play — Phase 4</h2>
         <button class="btn btn-small modal-close" type="button" data-close="modal-how">✕ Close</button>
       </div>
-      <p>Phase 3 adds movement: walk, run, jump, a fight camera and touch controls. These are the controls that <b>actually work right now</b>.</p>
+      <p>Phase 4 adds combat: punches, kicks, blocks, dodges and combos, with live health and a KO finish. These are the controls that <b>actually work right now</b>.</p>
       <h3>Movement (works now)</h3>
       <ul>
         <li><b>Player 1:</b> <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Space</kbd> jump · <kbd>Shift</kbd> run.</li>
@@ -431,10 +432,17 @@
         <li><b>Select Fighter</b> — confirms the pick (victory pose + ✓ badge). <b>Continue</b> enters the arena with that fighter.</li>
         <li>Your last confirmed fighter is remembered on this device and pre-focused next time.</li>
       </ul>
-      <h3>Not in Phase 3</h3>
+      <h3>Combat (works now)</h3>
       <ul>
-        <li>Combat controls (punch / kick / block / special) — a later phase.</li>
-        <li>Health bars, rounds, win/lose — a later phase. The health bars in the match bar are labelled placeholders for Phase 5.</li>
+        <li><b>Player 1:</b> <kbd>J</kbd> light punch · <kbd>K</kbd> heavy punch · <kbd>U</kbd> kick · <kbd>I</kbd> heavy kick · <kbd>L</kbd> block (hold; <kbd>L</kbd>+<kbd>S</kbd> low guard) · <kbd>O</kbd> dodge · <kbd>S</kbd>+<kbd>O</kbd> backward evade.</li>
+        <li><b>Player 2 (Two Player Local):</b> Numpad <kbd>1</kbd> light punch · <kbd>2</kbd> heavy punch · <kbd>3</kbd> kick · <kbd>0</kbd> heavy kick · <kbd>Numpad Enter</kbd> block · <kbd>Numpad 5</kbd> dodge. Fallback: <kbd>,</kbd> <kbd>.</kbd> <kbd>/</kbd> <kbd>'</kbd> attacks, <kbd>;</kbd> block, <kbd>M</kbd> dodge.</li>
+        <li><b>Touch:</b> LP / HP / KICK / HK buttons, hold <b>BLOCK</b>, tap <b>DODGE</b> — Player 1 only, beside the joystick.</li>
+        <li>Damage is fixed per fighter (strength and defense change it) — no random numbers. Blocking reduces a hit to small chip damage; dodging through an attack avoids it completely. Chain hits quickly to build a combo — the combo counter appears at 2+ hits and damage scales down after the second hit.</li>
+        <li>At 0 HP the match ends in a K.O. — Rematch or Quit from the overlay.</li>
+      </ul>
+      <h3>Not in Phase 4</h3>
+      <ul>
+        <li>Special attacks and rounds — a later phase (Phase 5).</li>
         <li>CPU opponent AI — a later phase (in Player vs Computer the CPU fighter stands in guard for now).</li>
         <li>Online Multiplayer — coming in a later phase.</li>
       </ul>
@@ -450,7 +458,7 @@
       </div>
       <p>Saved on this device (localStorage). They apply immediately.</p>
       <div class="setting-row">
-        <label for="setting-sound">Sound<small>On / off. Phase 2 has no audio yet — this preference is saved for a later phase.</small></label>
+        <label for="setting-sound">Sound<small>On / off. Combat sound effects (punches, blocks, KO) — applies from the next match.</small></label>
         <span class="switch"><input type="checkbox" id="setting-sound" checked /><span class="track"></span></span>
       </div>
       <div class="setting-row">
@@ -478,7 +486,8 @@
       <p>RISHU.COM is an original premium 3D browser fighting game. All branding, characters, UI and visuals are original creations — nothing is copied from any other game.</p>
       <p><b>Phase 1:</b> main menu, game modes, character selection, How to Play, Settings, fullscreen, loading screen, and the 3D arena preview (Three.js / WebGL).</p>
       <p><b>Phase 2:</b> six original fighters with distinct procedural 3D models, a live rotatable character preview, idle / walk / victory / selection animations, and a confirmed-pick flow that carries into the arena.</p>
-      <p><b>Phase 3:</b> movement (walk, run, jump), a third-person fight camera, touch controls, a match timer and pause. Fighting — punches, blocks, health, rounds — is a later phase.</p>
+      <p><b>Phase 3:</b> movement (walk, run, jump), a third-person fight camera, touch controls, a match timer and pause.</p>
+      <p><b>Phase 4:</b> combat — punches, kicks, blocks, dodges, combos, deterministic damage, live health bars and KO. Special moves and rounds are a later phase.</p>
     </div>
   </div>
 
@@ -490,11 +499,10 @@
         <button class="btn btn-small modal-close" type="button" data-close="modal-phase2">✕ Close</button>
       </div>
       <ul>
-        <li>Real combat: punch, kick, block, dodge, special moves.</li>
-        <li>Health bars, round timer, best-of rounds, win / lose screens.</li>
+        <li>Special moves and best-of rounds.</li>
         <li>CPU opponent AI for Player vs Computer.</li>
       </ul>
-      <p>Movement, camera, touch controls, the match timer and pause are already in — Phase 3, live now. Online Multiplayer stays Coming Soon until the netcode phase.</p>
+      <p>Combat is already in — punches, kicks, blocks, dodges, combos, live health and KO (Phase 4, live now). Online Multiplayer stays Coming Soon until the netcode phase.</p>
     </div>
   </div>
 
