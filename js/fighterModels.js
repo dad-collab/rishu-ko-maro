@@ -10,11 +10,11 @@
 //   group -> armL / armR (shoulder pivots), legL / legR (hip pivots)
 // Returned parts: { group, torso, head, armL, armR, legL, legR, ring? }
 //
-// PHASE 3 HOOK (combat): the animator in fighterAnimations.js already
+// LATER-PHASE HOOK (combat): the animator in fighterAnimations.js
 // exposes setState('punch' | 'kick' | 'block' | 'hit' | 'ko') as a
-// reserved API surface — Phase 3 implements those poses here by
+// reserved API surface — a later phase implements those poses here by
 // rotating the same arm/leg pivots, and reads char.strength /
-// char.special / char.specialMove for damage. No combat runs in Phase 2.
+// char.special / char.specialMove for damage. No combat runs in Phase 3.
 
 import * as THREE from 'three';
 

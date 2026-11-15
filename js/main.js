@@ -72,10 +72,18 @@ async function boot() {
     onQualityChange: (q) => { if (arena) arena.setQuality(q); },
     onRequestFullscreen: requestFullscreen,
     onEnterArena: (mode, charA, charB) => {
-      if (arena) arena.setFighters(charA, charB);
+      if (arena) arena.startMatch(mode, charA, charB);
     },
-    onArenaShown: () => { if (arena) arena.resize(); },
+    onArenaShown: () => {
+      if (arena) {
+        arena.resize();
+        arena.ensureMatch(); // begin the match once the screen is visible
+      }
+    },
+    onLeaveArena: () => { if (arena) arena.stopMatch(); },
   });
+  // Note: the HUD Quit button goes through createArena's onQuitMatch
+  // below (stop the match, then show Game Modes) — not through menu.
 
   setProgress(20, 'Starting 3D arena…');
   if (!arenaWrap) {
@@ -94,6 +102,12 @@ async function boot() {
       quality: settings.quality,
       onProgress: (pct, text) => setProgress(20 + Math.round(pct * 0.75), text),
       onError: (msg) => showError(msg),
+      // HUD Quit button: stop the match, then go to Game Modes.
+      // (menu is already created above, so menu.show exists by call time.)
+      onQuitMatch: () => {
+        if (arena) arena.stopMatch();
+        if (menu) menu.show('modes');
+      },
     });
   } catch (e) {
     console.error('[RISHU] Arena failed to start:', e);

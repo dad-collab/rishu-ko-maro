@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="description" content="RISHU.COM — a premium 3D browser fighting game. Phase 2: six original fighters, live 3D character preview and arena preview." />
+  <meta name="description" content="RISHU.COM — a premium 3D browser fighting game. Phase 3: move, run and jump in the arena — six original fighters, live 3D character preview, movement, camera and touch controls." />
   <meta name="theme-color" content="#0E1B2E" />
   <title>RISHU.COM — 3D Fighting Game</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230E1B2E'/%3E%3Cpath d='M20 46V18h18l5 5-5 5H20m13 0 9 18' fill='none' stroke='%23F2EDE3' stroke-width='3.5' stroke-linejoin='miter'/%3E%3Ccircle cx='33' cy='28' r='2.6' fill='%23BC5222'/%3E%3C/svg%3E" />
@@ -29,7 +29,7 @@
       <circle cx="48" cy="42" r="4" fill="#BC5222"/>
     </svg>
     <h1 class="loading-name">RISHU<span>.COM</span></h1>
-    <p class="loading-tag">Premium 3D Fighting — Phase 2</p>
+    <p class="loading-tag">Premium 3D Fighting — Phase 3</p>
     <div class="loading-track"><span id="loading-bar"></span></div>
     <p id="loading-text">Loading RISHU.COM…</p>
     <p id="loading-error" class="loading-error" hidden></p>
@@ -111,11 +111,11 @@
             <button class="mode-card mode-card--wide" id="mode-pvc" type="button">
               <span class="mode-num">01</span>
               <span class="mode-title">Player vs Computer</span>
-              <p>Pick your fighter and face a CPU opponent in the arena preview.</p>
+              <p>Pick your fighter and face a CPU opponent in the arena.</p>
               <ul class="mode-points">
                 <li>Your pick, your rules</li>
                 <li>CPU opponent picked at random</li>
-                <li>Full arena preview with your fighters</li>
+                <li>Move, run and jump in the arena with your fighters</li>
               </ul>
               <span class="mode-cta">Select fighter →</span>
             </button>
@@ -129,7 +129,7 @@
               <span class="mode-num">03</span>
               <div>
                 <h3>Online Multiplayer</h3>
-                <p>Fight players around the world. Online play is not in Phase 2 yet.</p>
+                <p>Fight players around the world. Online play is not available yet.</p>
               </div>
               <span class="badge-soon">Coming Soon</span>
             </div>
@@ -265,11 +265,11 @@
           <button class="mode-card mode-card--wide" id="mode-pvc-2" type="button">
             <span class="mode-num">01</span>
             <span class="mode-title">Player vs Computer</span>
-            <p>Pick your fighter and face a CPU opponent in the arena preview.</p>
+            <p>Pick your fighter and face a CPU opponent in the arena.</p>
             <ul class="mode-points">
               <li>Your pick, your rules</li>
               <li>CPU opponent picked at random</li>
-              <li>Full arena preview with your fighters</li>
+              <li>Move, run and jump in the arena with your fighters</li>
             </ul>
             <span class="mode-cta">Select fighter →</span>
           </button>
@@ -283,7 +283,7 @@
             <span class="mode-num">03</span>
             <div>
               <h3>Online Multiplayer</h3>
-              <p>Fight players around the world. Online play is not in Phase 2 yet.</p>
+              <p>Fight players around the world. Online play is not available yet.</p>
             </div>
             <span class="badge-soon">Coming Soon</span>
           </div>
@@ -324,7 +324,7 @@
               <h3 id="preview-name">—</h3>
               <p id="preview-tagline" class="preview-tagline">—</p>
               <p id="preview-personality" class="preview-personality">—</p>
-              <p class="preview-special">Special move: <b id="preview-special">—</b> <span class="badge-soon">Phase 3</span></p>
+              <p class="preview-special">Special move: <b id="preview-special">—</b> <span class="badge-soon">Later phase</span></p>
               <div id="preview-stats" class="preview-stats"><!-- filled by js/menu.js --></div>
             </div>
           </aside>
@@ -339,21 +339,22 @@
         </div>
       </section>
 
-      <!-- ============ ARENA PREVIEW ============ -->
-      <section class="screen" id="screen-arena" aria-label="Arena preview">
+      <!-- ============ THE ARENA ============ -->
+      <section class="screen" id="screen-arena" aria-label="The arena">
         <div class="arena-band">
           <div>
-            <p class="kicker">Arena preview</p>
-            <h2>Arena Preview</h2>
+            <p class="kicker">The arena</p>
+            <h2>The Arena</h2>
             <p id="arena-fight-label">— vs —</p>
           </div>
           <button class="btn btn-small btn-ghost" id="btn-back-arena" type="button">← Change Fighters</button>
         </div>
         <div class="arena-note">
-          <b>Phase 2 — Arena Preview.</b> This is the real 3D arena with your selected
-          fighters — the same procedural 3D models from character select — standing
-          in the ring. Fighting gameplay (punches, blocks, health, rounds, win/lose)
-          is <b>not</b> in Phase 2 — it comes in Phase 3. Nothing here is faked.
+          <b>Phase 3 — Movement.</b> This is the real 3D arena with your selected
+          fighters — the same procedural 3D models from character select — and now
+          you can move them: walk, run and jump, with a camera that follows the
+          fight. Combat (punches, blocks, health, rounds) is a later phase.
+          Nothing here is faked.
         </div>
         <div class="arena-frame">
           <span class="tick tl" aria-hidden="true"></span>
@@ -362,10 +363,10 @@
           <span class="tick br" aria-hidden="true"></span>
           <div id="arena-wrap"></div>
         </div>
-        <p class="arena-caption">Drag to orbit the camera · Scroll to zoom · Touch: drag to orbit — the camera slowly orbits on its own.</p>
+        <p class="arena-caption">WASD move · Space jump · Shift run · P2: arrows + Right Shift + Enter · Drag to adjust the camera · Touch: left joystick + JUMP</p>
         <div class="arena-actions">
           <button class="btn" id="btn-modes" type="button">Game Modes</button>
-          <button class="text-link" id="btn-phase2" type="button">What’s in Phase 3?</button>
+          <button class="text-link" id="btn-phase2" type="button">What’s next?</button>
           <button class="text-link" id="btn-fullscreen" type="button">Fullscreen</button>
         </div>
       </section>
@@ -387,10 +388,10 @@
         <div class="foot-col">
           <h4>About</h4>
           <button class="foot-link" id="btn-about" type="button">About RISHU.COM</button>
-          <p>Phase 2 — six fighters, live 3D preview, arena preview. Fighting gameplay arrives in Phase 3.</p>
+          <p>Phase 3 — six fighters, live 3D preview, movement, camera and touch controls. Fighting gameplay is a later phase.</p>
         </div>
       </div>
-      <p class="colophon">RISHU.COM — Phase 2 · Original game, original fighters, original branding.</p>
+      <p class="colophon">RISHU.COM — Phase 3 · Original game, original fighters, original branding.</p>
     </footer>
   </div>
 
@@ -398,19 +399,27 @@
   <div class="modal" id="modal-how" role="dialog" aria-modal="true" aria-labelledby="how-title" aria-hidden="true">
     <div class="modal-box">
       <div class="modal-close-row">
-        <h2 id="how-title">How to Play — Phase 2</h2>
+        <h2 id="how-title">How to Play — Phase 3</h2>
         <button class="btn btn-small modal-close" type="button" data-close="modal-how">✕ Close</button>
       </div>
-      <p>Phase 2 adds six original fighters, a live 3D character preview and animations. These are the controls that <b>actually work right now</b>.</p>
+      <p>Phase 3 adds movement: walk, run, jump, a fight camera and touch controls. These are the controls that <b>actually work right now</b>.</p>
+      <h3>Movement (works now)</h3>
+      <ul>
+        <li><b>Player 1:</b> <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Space</kbd> jump · <kbd>Shift</kbd> run.</li>
+        <li><b>Player 2 (Two Player Local):</b> <kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> move · <kbd>Right Shift</kbd> jump · <kbd>Enter</kbd> run.</li>
+        <li><b>Touch:</b> left joystick to move (push to the edge to run) · <b>JUMP</b> button on the right. The joystick drives Player 1 only.</li>
+        <li><b>Pause:</b> <kbd>P</kbd> or <kbd>Esc</kbd>, or the Pause button in the match bar.</li>
+        <li>Your fighter always faces the opponent; the camera follows the fight and keeps both fighters in frame.</li>
+      </ul>
       <h3>Arena camera (works now)</h3>
       <ul>
-        <li><b>Drag</b> with mouse or finger — orbit the camera around the ring.</li>
+        <li><b>Drag</b> with mouse or finger — adjust the viewing angle around the fight.</li>
         <li><b>Scroll / pinch</b> — zoom in and out.</li>
-        <li>Leave it alone — the camera slowly orbits on its own (cinematic idle).</li>
+        <li>Outside a match, the camera slowly orbits on its own (cinematic idle).</li>
       </ul>
       <h3>Menus (work now)</h3>
       <ul>
-        <li><b>Play Now</b> → Game Modes → Character Select → Arena Preview.</li>
+        <li><b>Play Now</b> → Game Modes → Character Select → The Arena.</li>
         <li><b>Character cards</b> — tap to select; stats are shown on every card.</li>
         <li><b>Settings</b> — sound and graphics quality, saved on this device.</li>
         <li><b>Fullscreen</b> — toggles real fullscreen on supported browsers.</li>
@@ -422,13 +431,13 @@
         <li><b>Select Fighter</b> — confirms the pick (victory pose + ✓ badge). <b>Continue</b> enters the arena with that fighter.</li>
         <li>Your last confirmed fighter is remembered on this device and pre-focused next time.</li>
       </ul>
-      <h3>Not in Phase 2</h3>
+      <h3>Not in Phase 3</h3>
       <ul>
-        <li>Combat controls (punch / kick / block / special) — Phase 3.</li>
-        <li>Health bars, rounds, timer, win/lose — Phase 3.</li>
+        <li>Combat controls (punch / kick / block / special) — a later phase.</li>
+        <li>Health bars, rounds, win/lose — a later phase. The health bars in the match bar are labelled placeholders for Phase 5.</li>
+        <li>CPU opponent AI — a later phase (in Player vs Computer the CPU fighter stands in guard for now).</li>
         <li>Online Multiplayer — coming in a later phase.</li>
       </ul>
-      <p>Movement keys (<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows) are <b>not</b> active in Phase 2 — the fighters are preview models, not controllable yet.</p>
     </div>
   </div>
 
@@ -469,7 +478,7 @@
       <p>RISHU.COM is an original premium 3D browser fighting game. All branding, characters, UI and visuals are original creations — nothing is copied from any other game.</p>
       <p><b>Phase 1:</b> main menu, game modes, character selection, How to Play, Settings, fullscreen, loading screen, and the 3D arena preview (Three.js / WebGL).</p>
       <p><b>Phase 2:</b> six original fighters with distinct procedural 3D models, a live rotatable character preview, idle / walk / victory / selection animations, and a confirmed-pick flow that carries into the arena.</p>
-      <p><b>Phase 3 (planned):</b> real fighting — punches, blocks, health, rounds, timer, win/lose, and keyboard + touch controls.</p>
+      <p><b>Phase 3:</b> movement (walk, run, jump), a third-person fight camera, touch controls, a match timer and pause. Fighting — punches, blocks, health, rounds — is a later phase.</p>
     </div>
   </div>
 
@@ -477,17 +486,15 @@
   <div class="modal" id="modal-phase2" role="dialog" aria-modal="true" aria-labelledby="phase2-title" aria-hidden="true">
     <div class="modal-box">
       <div class="modal-close-row">
-        <h2 id="phase2-title">What’s in Phase 3?</h2>
+        <h2 id="phase2-title">What’s next?</h2>
         <button class="btn btn-small modal-close" type="button" data-close="modal-phase2">✕ Close</button>
       </div>
       <ul>
         <li>Real combat: punch, kick, block, dodge, special moves.</li>
         <li>Health bars, round timer, best-of rounds, win / lose screens.</li>
-        <li>Keyboard controls (P1) and touch controls on mobile.</li>
         <li>CPU opponent AI for Player vs Computer.</li>
-        <li>Two Player Local with separate key sets.</li>
       </ul>
-      <p>Online Multiplayer stays Coming Soon until the netcode phase.</p>
+      <p>Movement, camera, touch controls, the match timer and pause are already in — Phase 3, live now. Online Multiplayer stays Coming Soon until the netcode phase.</p>
     </div>
   </div>
 

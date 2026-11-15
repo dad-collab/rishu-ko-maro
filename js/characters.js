@@ -7,8 +7,8 @@
 //   hair: hairstyle geometry id
 //   outfit: outfit geometry id
 //   accessory: extra geometry id (or null)
-// `specialMove` is display-only in Phase 2 — the move itself is a
-// Phase 3 combat hook (see the PHASE 3 HOOK comment in fighterModels.js).
+// `specialMove` is display-only — the move itself is a later-phase
+// combat hook (see the LATER-PHASE HOOK comment in fighterModels.js).
 
 export const CHARACTERS = [
   {

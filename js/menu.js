@@ -4,7 +4,7 @@
 // in a 55/45 split with an ivory detail panel, plus a horizontal fighter
 // carousel below. Tap a card to preview that fighter; "Select Fighter"
 // confirms the pick (victory pose + confirmed badge); "Continue" enters
-// the arena preview with the confirmed fighters.
+// the arena with the confirmed fighters.
 // Homepage: asymmetric hero with a live 3D showcase (same preview module).
 // No fake buttons: every action below either navigates, opens a real
 // modal, changes a real setting, or is explicitly labelled Coming Soon.
@@ -41,7 +41,7 @@ function saveSelection(sel) {
 
 export function initMenu(api) {
   // api: { settings, onQualityChange, onEnterArena(mode, p1, p2),
-  //        onRequestFullscreen, arenaReady }
+  //        onRequestFullscreen, arenaReady, onLeaveArena }
   const $ = (id) => document.getElementById(id);
   const screens = {
     menu: $('screen-menu'),
@@ -66,6 +66,10 @@ export function initMenu(api) {
     const prev = screens[currentScreen];
     const next = screens[name];
     if (!next) return;
+    // Leaving the arena stops the match — in ONE place, so every exit
+    // path (Back button, Game Modes button, nav, footer) is covered and
+    // no input/timer can keep running behind another screen.
+    if (currentScreen === 'arena' && name !== 'arena' && api.onLeaveArena) api.onLeaveArena();
     currentScreen = name;
     window.scrollTo({ top: 0 });
     clearTimeout(showTimer);

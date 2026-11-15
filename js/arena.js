@@ -1,13 +1,20 @@
-// RISHU.COM — Phase 2 — arena.js
-// Three.js fighting-arena scene. Preview only: two stylised fighter
-// figures stand in the ring; no combat runs in Phase 2.
+// RISHU.COM — Phase 3 — arena.js
+// Three.js fighting-arena scene. Phase 3: the two selected fighters are
+// controllable — walk / run / jump with keyboard or touch, a third-person
+// fight camera, HUD + pause. No combat runs in Phase 3 (no attacks,
+// damage, health logic, rounds) — health bars are Phase 5 placeholders.
 // Responsibilities: scene, lighting, shadows, floor texture, camera,
-// idle orbit, resize, visibility pause, quality switching.
+// match lifecycle (startMatch / beginMatch / stopMatch), idle orbit,
+// resize, visibility pause, quality switching.
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildFighterModel } from './fighterModels.js';
 import { createFighterAnimator } from './fighterAnimations.js';
+import { createKeyboardInput, createFighterController, resolveSeparation } from './movement.js';
+import { createFightCamera } from './camera.js';
+import { createTouchControls } from './touchControls.js';
+import { createHud } from './hud.js';
 
 const QUALITY = {
   low: { pixelRatio: 1, shadows: false, antialias: false },
@@ -285,7 +292,9 @@ export function createArena(container, opts = {}) {
     m.group.position.set(x, 0.56, 0);
     m.group.rotation.y = facing;
     scene.add(m.group);
-    return { model: m, animator: createFighterAnimator(m, { initial: 'idle' }), baseRot: facing };
+    // Phase 3: facing is owned by the movement controller, not by a
+    // stored baseRot — the old idle facing sway is deleted (see tick).
+    return { model: m, animator: createFighterAnimator(m, { initial: 'idle' }) };
   }
   let fighterA = placeFighter(DEFAULT_A, -1.6, Math.PI / 2);
   let fighterB = placeFighter(DEFAULT_B, 1.6, -Math.PI / 2);
@@ -307,6 +316,144 @@ export function createArena(container, opts = {}) {
     setTimeout(() => { controls.autoRotate = true; }, 4000);
   });
 
+  // ---- Match state (Phase 3) ----
+  // matchBuilt: fighters/controllers/camera/HUD/touch/keyboard exist.
+  // matchRunning: the simulation is live (input + movement + timer).
+  // paused: simulation frozen (HUD overlay shown), rendering continues.
+  // lastMatch remembers the last confirmed pair so re-entering the arena
+  // (e.g. via the nav) starts a fresh match instead of a dead preview.
+  let matchBuilt = false;
+  let matchRunning = false;
+  let paused = false;
+  let lastMatch = null; // { mode, charA, charB }
+  let ctrlA = null;
+  let ctrlB = null;
+  let fightCamera = null;
+  let keyboard = null;
+  let touch = null;
+  let hud = null;
+
+  function readP1Input() {
+    const input = keyboard ? keyboard.getP1() : { mx: 0, mz: 0, run: false, jump: false };
+    // Touch joystick overrides the keyboard when it is deflected; the
+    // jump edge is merged (either source can trigger one jump).
+    if (touch) {
+      const t = touch.input;
+      if (t.mx !== 0 || t.mz !== 0) {
+        input.mx = t.mx;
+        input.mz = t.mz;
+        input.run = t.run;
+      }
+      if (touch.consumeJump()) input.jump = true;
+    }
+    return input;
+  }
+
+  function togglePause() {
+    if (!matchRunning || !hud) return;
+    hud.setPaused(!hud.isPaused());
+  }
+
+  function startMatch(mode, charA, charB) {
+    stopMatch(); // idempotent: a re-start disposes the old match first
+    setFighters(charA, charB);
+    lastMatch = { mode, charA, charB };
+    const arenaScreen = document.getElementById('screen-arena');
+    const arenaFrame = arenaScreen ? arenaScreen.querySelector('.arena-frame') : null;
+
+    fightCamera = createFightCamera({
+      camera,
+      controls,
+      domElement: renderer.domElement,
+      // camera.js calls these with an output vector — copy into it
+      // (returning the position would be discarded and the midpoint
+      // would stay stale at the origin).
+      getFighterA: (out) => out.copy(fighterA.model.group.position),
+      getFighterB: (out) => out.copy(fighterB.model.group.position),
+    });
+
+    ctrlA = createFighterController({
+      model: fighterA.model,
+      animator: fighterA.animator,
+      char: charA,
+      getOpponentPosition: (out) => out.copy(fighterB.model.group.position),
+      getCameraForward: (out) => fightCamera.getForward(out),
+    });
+    ctrlB = createFighterController({
+      model: fighterB.model,
+      animator: fighterB.animator,
+      char: charB,
+      getOpponentPosition: (out) => out.copy(fighterA.model.group.position),
+      getCameraForward: (out) => fightCamera.getForward(out),
+    });
+
+    keyboard = createKeyboardInput({ onPauseKey: togglePause });
+    keyboard.attach();
+    keyboard.setEnabled(false); // enabled by beginMatch, after the screen swap
+
+    if (arenaScreen) {
+      hud = createHud(arenaScreen, {
+        p1: charA,
+        p2: charB,
+        mode,
+        before: arenaFrame,
+        onPause: () => { paused = true; },
+        onResume: () => { paused = false; },
+        onQuit: () => { if (opts.onQuitMatch) opts.onQuitMatch(); },
+      });
+    }
+    if (arenaFrame) {
+      touch = createTouchControls(arenaFrame, {});
+      touch.setEnabled(false); // enabled by beginMatch (touch devices only)
+    }
+
+    matchBuilt = true;
+    matchRunning = false;
+    paused = false;
+  }
+
+  function beginMatch() {
+    if (!matchBuilt || matchRunning) return;
+    matchRunning = true;
+    if (fightCamera) fightCamera.startFight();
+    if (hud) hud.start();
+    if (keyboard) keyboard.setEnabled(true);
+    if (touch) touch.setEnabled(true);
+    // Blur any focused button so Enter/Space cannot re-trigger it
+    // while they are also P2-run / P1-jump keys.
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  }
+
+  // Every arena entry is a live match: if a match was built, begin it;
+  // if the user re-entered via the nav with no match built, start a
+  // fresh one from the last confirmed pair. Safe to call repeatedly.
+  function ensureMatch() {
+    if (matchRunning) return;
+    if (matchBuilt) { beginMatch(); return; }
+    if (lastMatch) startMatch(lastMatch.mode, lastMatch.charA, lastMatch.charB);
+    if (matchBuilt) beginMatch();
+  }
+
+  function stopMatch() {
+    if (!matchBuilt && !matchRunning) return;
+    if (keyboard) { keyboard.setEnabled(false); keyboard.detach(); keyboard = null; }
+    if (touch) { touch.setEnabled(false); touch.dispose(); touch = null; }
+    if (fightCamera) { fightCamera.dispose(); fightCamera = null; }
+    if (hud) { hud.destroy(); hud = null; }
+    ctrlA = null;
+    ctrlB = null;
+    matchBuilt = false;
+    matchRunning = false;
+    paused = false;
+    // The selected pair stays in the ring as a preview; animators back
+    // to idle and the free-orbit camera resumes.
+    fighterA.animator.setState('idle');
+    fighterB.animator.setState('idle');
+    controls.target.set(0, 1.2, 0);
+    controls.enabled = true;
+    controls.autoRotate = true;
+  }
+
   // ---- Render loop: paused when tab hidden, capped work ----
   let raf = 0;
   let running = true;
@@ -319,13 +466,32 @@ export function createArena(container, opts = {}) {
     if (!running || document.hidden) return;
     const dt = Math.min(0.05, clock.getDelta());
     const t = clock.getElapsedTime();
-    // Idle animation (breathing / guard sway) from the animator.
-    // A slow facing sway keeps the pair reading as alive, not statues.
-    fighterA.animator.update(dt, t);
-    fighterB.animator.update(dt, t);
-    fighterA.model.group.rotation.y = fighterA.baseRot + Math.sin(t * 0.5) * 0.06;
-    fighterB.model.group.rotation.y = fighterB.baseRot + Math.sin(t * 0.5 + 0.8) * 0.06;
-    controls.update();
+    if (matchRunning && !paused) {
+      // Live match: input -> controllers -> separation -> animators -> camera.
+      // In PvC the CPU fighter gets ZERO input (no AI in Phase 3) — it
+      // stands in guard, facing the player. The P2 keys are still read
+      // (to consume the jump edge) but discarded outside 2P Local, so
+      // arrow keys can never move the CPU fighter.
+      const p1in = readP1Input();
+      const rawP2 = keyboard ? keyboard.getP2() : { mx: 0, mz: 0, run: false, jump: false };
+      const p2in = (lastMatch && lastMatch.mode === '2p')
+        ? rawP2
+        : { mx: 0, mz: 0, run: false, jump: false };
+      if (ctrlA) ctrlA.update(dt, p1in);
+      if (ctrlB) ctrlB.update(dt, p2in);
+      if (ctrlA && ctrlB) resolveSeparation(ctrlA, ctrlB);
+      fighterA.animator.update(dt, t);
+      fighterB.animator.update(dt, t);
+      if (fightCamera) fightCamera.update(dt);
+      // No controls.update() in fight mode — OrbitControls is disabled
+      // and must not fight the camera lerp.
+    } else if (!paused) {
+      // Preview / idle: breathing + guard sway from the animator, free orbit.
+      fighterA.animator.update(dt, t);
+      fighterB.animator.update(dt, t);
+      controls.update();
+    }
+    // While paused the frame is frozen (no sim, no camera) but still rendered.
     renderer.render(scene, camera);
   }
   tick();
@@ -363,14 +529,23 @@ export function createArena(container, opts = {}) {
     setFighters(charA, charB) {
       // Replace preview figures with the selected characters' real
       // Phase 2 models (distinct silhouette, outfit, hairstyle).
+      // Preview-only path: startMatch() calls this, then binds the
+      // movement controllers to the new models. Do not call it during
+      // a match — it would orphan the controllers.
       scene.remove(fighterA.model.group);
       scene.remove(fighterB.model.group);
       fighterA = placeFighter(charA, -1.6, Math.PI / 2);
       fighterB = placeFighter(charB, 1.6, -Math.PI / 2);
     },
+    startMatch,
+    beginMatch,
+    ensureMatch,
+    stopMatch,
+    isMatchRunning: () => matchRunning,
     resize: onResize,
     dispose() {
       disposed = true;
+      stopMatch(); // detach keyboard, dispose HUD/touch/camera first
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', onResize);
       document.removeEventListener('visibilitychange', onVisibility);
