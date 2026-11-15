@@ -1,4 +1,4 @@
-// RISHU.COM — Phase 1 — main.js
+// RISHU.COM — Phase 2 — main.js
 // Boot: loading screen (tracks real init steps) -> arena init -> menu.
 // No infinite loading: WebGL failure shows a real error state.
 
@@ -111,7 +111,7 @@ async function boot() {
   // Keep the fullscreen button label honest
   document.addEventListener('fullscreenchange', () => {
     const btn = document.getElementById('btn-fullscreen');
-    if (btn) btn.textContent = document.fullscreenElement ? '⤢ Exit Fullscreen' : '⤢ Fullscreen';
+    if (btn) btn.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
   });
 
   finishLoading();

@@ -1,9 +1,11 @@
-// RISHU.COM — Phase 2 — menu.js
+// RISHU.COM — Phase 2 — menu.js (visual redesign 2026-11-15)
 // Screen router + menu / modes / character-select / modals logic.
 // Phase 2 character select: a large live 3D preview (characterPreview.js)
-// beside a grid of six fighter cards. Tap a card to preview that fighter;
-// "Select Fighter" confirms the pick (victory pose + confirmed badge);
-// "Continue" enters the arena preview with the confirmed fighters.
+// in a 55/45 split with an ivory detail panel, plus a horizontal fighter
+// carousel below. Tap a card to preview that fighter; "Select Fighter"
+// confirms the pick (victory pose + confirmed badge); "Continue" enters
+// the arena preview with the confirmed fighters.
+// Homepage: asymmetric hero with a live 3D showcase (same preview module).
 // No fake buttons: every action below either navigates, opens a real
 // modal, changes a real setting, or is explicitly labelled Coming Soon.
 
@@ -56,16 +58,47 @@ export function initMenu(api) {
   let preview = null; // characterPreview instance (lazy)
   let previewWalk = false;
   let confirming = false; // guards the victory->arena transition
+  let heroPreview = null; // homepage showcase preview (lazy, menu screen only)
 
+  let showTimer = null;
   function show(name) {
-    Object.entries(screens).forEach(([key, el]) => {
-      if (el) el.classList.toggle('active', key === name);
-    });
+    if (name === currentScreen) return;
+    const prev = screens[currentScreen];
+    const next = screens[name];
+    if (!next) return;
     currentScreen = name;
     window.scrollTo({ top: 0 });
+    clearTimeout(showTimer);
+    if (prev && prev !== next) {
+      // Crossfade-rise: outgoing fades first, incoming rises in after 180ms.
+      prev.classList.add('leaving');
+      showTimer = setTimeout(() => {
+        prev.classList.remove('active', 'leaving');
+        next.classList.add('active');
+        afterShow(name);
+      }, 180);
+    } else {
+      if (prev) prev.classList.remove('active');
+      next.classList.add('active');
+      afterShow(name);
+    }
+  }
+
+  // Runs once the incoming screen is visible.
+  function afterShow(name) {
     // Arena canvas only needs a resize when its screen becomes visible
     if (name === 'arena' && api.onArenaShown) api.onArenaShown();
     if (name === 'characters' && preview) preview.resize();
+    if (name === 'menu') {
+      ensureHeroPreview();
+      if (heroPreview) heroPreview.resize();
+    }
+    // WebGL budget: on small screens the hero preview is destroyed — not
+    // just hidden — when leaving the menu, to protect low-end memory.
+    if (name !== 'menu' && heroPreview && window.matchMedia('(max-width: 640px)').matches) {
+      heroPreview.dispose();
+      heroPreview = null;
+    }
   }
 
   function showToast(msg) {
@@ -91,11 +124,34 @@ export function initMenu(api) {
       console.error('[RISHU] Character preview failed to start:', e);
       preview = null;
     }
-    if (!preview) {
+    if (!preview && !wrap.querySelector('.preview-fallback')) {
       // Honest fallback: cards still work, preview area explains why.
-      wrap.innerHTML = '<p class="preview-fallback">3D preview is unavailable in this browser (WebGL needed). Character cards below still work — tap one, then Select Fighter.</p>';
+      // Appended (not innerHTML) so the hint + confirmed badge survive.
+      wrap.insertAdjacentHTML('beforeend', '<p class="preview-fallback">3D preview is unavailable in this browser (WebGL needed). Character cards below still work — tap one, then Select Fighter.</p>');
     }
     return preview;
+  }
+
+  // ---------- Homepage hero showcase (reuses characterPreview.js) ----------
+  function ensureHeroPreview() {
+    if (heroPreview) return heroPreview;
+    const wrap = $('hero-preview');
+    if (!wrap) return null;
+    try {
+      heroPreview = createCharacterPreview(wrap, {
+        quality: api.settings.quality,
+        isVisible: () => currentScreen === 'menu',
+      });
+      if (heroPreview) heroPreview.setFighter(getCharacter('rishu'), false);
+    } catch (e) {
+      console.error('[RISHU] Hero showcase failed to start:', e);
+      heroPreview = null;
+    }
+    if (!heroPreview) {
+      // Honest fallback: the menu still works, the stage explains why.
+      wrap.innerHTML = '<p class="preview-fallback">3D showcase is unavailable in this browser (WebGL needed). Play Now still works.</p>';
+    }
+    return heroPreview;
   }
 
   function focusCharacter(id, animate = true) {
@@ -108,12 +164,24 @@ export function initMenu(api) {
     }
     renderDetail(c);
     renderGrid();
+    // Carousel: keep the focused card centred + a short scale pulse.
+    // Only on a real tap (animate) — never on first open, so the page
+    // does not scroll away from the top when character select opens.
+    if (animate) {
+      const card = grid && grid.querySelector('.char-card.focused');
+      if (card) {
+        card.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+        card.classList.add('just-focused');
+        setTimeout(() => card.classList.remove('just-focused'), 160);
+      }
+    }
     updatePickUI();
   }
 
   function renderDetail(c) {
     const set = (id, text) => { const el = $(id); if (el) el.textContent = text; };
     set('preview-name', c.name);
+    set('stage-name-text', c.name);
     set('preview-tagline', `${c.title} · ${c.style}`);
     set('preview-personality', c.personality);
     set('preview-special', c.specialMove);
@@ -133,10 +201,24 @@ export function initMenu(api) {
         || (selectedMode !== '2p' && p1 === c.id);
       badge.hidden = !confirmed;
     }
+    // Re-trigger the cinematic entrance stagger on every focus change.
+    const detail = document.querySelector('.preview-detail');
+    if (detail) {
+      detail.classList.remove('entering');
+      void detail.offsetWidth;
+      detail.classList.add('entering');
+    }
   }
 
-  // ---------- Character grid (compact cards) ----------
+  // ---------- Character grid (compact cards — now a horizontal carousel) ----------
   const grid = $('char-grid');
+  // Light fighter colours need dark initials to stay readable.
+  function isLight(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    return lum > 0.45;
+  }
   function statRow(label, value) {
     return `<div class="stat-row"><span>${label}</span><span class="stat-bar" role="img" aria-label="${label} ${value} out of 10"><i style="width:${value * 10}%"></i></span><b>${value}</b></div>`;
   }
@@ -150,9 +232,9 @@ export function initMenu(api) {
       const taken = selectedMode === '2p' && pickingFor === 'p2' && p1 === c.id;
       return `
       <button class="char-card ${isFocused ? 'focused' : ''} ${isP1 || isP2 ? 'selected' : ''} ${taken ? 'taken' : ''}" data-char="${c.id}" aria-pressed="${isP1 || isP2}" ${taken ? 'disabled' : ''}>
-        <span class="char-avatar" style="--c:${c.color};--cd:${c.colorDark}">${c.initials}</span>
+        <span class="char-avatar${isLight(c.color) ? ' char-avatar--light' : ''}" style="--c:${c.color};--cd:${c.colorDark}">${c.initials}</span>
         ${tag ? `<span class="char-tag">${tag}</span>` : ''}
-        ${isFocused ? '<span class="char-focus">▶ Previewing</span>' : ''}
+        ${isFocused ? '<span class="char-focus">Previewing</span>' : ''}
         <span class="char-name">${c.name}</span>
         <span class="char-title">${c.title} · ${c.style}</span>
         <span class="char-stats">
@@ -208,7 +290,7 @@ export function initMenu(api) {
   }
 
   // Confirm the currently previewed fighter for the active slot.
-  // Plays the victory pose + glow in the preview, then locks the pick.
+  // Plays the victory pose + ring pulse in the preview, then locks the pick.
   function selectFocusedFighter() {
     if (!focused || confirming) return;
     const c = getCharacter(focused);
@@ -231,8 +313,16 @@ export function initMenu(api) {
     }
     if (preview) {
       preview.setAnimation('victory');
-      preview.pulseGlow();
+      preview.pulseRing();
       setTimeout(() => { if (preview) preview.setAnimation(previewWalk ? 'walk' : 'idle'); }, 1400);
+    }
+    // Orange ring flash on the stage (solid ring, fades in 400ms).
+    const stage = document.querySelector('.stage');
+    if (stage) {
+      stage.classList.remove('flash');
+      void stage.offsetWidth;
+      stage.classList.add('flash');
+      setTimeout(() => stage.classList.remove('flash'), 450);
     }
     showToast(`${c.name} confirmed${selectedMode === '2p' ? ` for ${pickingFor === 'p2' ? 'Player 1' : 'Player 2'}` : ''}!`);
     renderDetail(c);
@@ -282,9 +372,7 @@ export function initMenu(api) {
       confirming = false;
       const label = $('arena-fight-label');
       if (label) {
-        label.textContent = selectedMode === '2p'
-          ? `${a.name}  vs  ${b.name}  ·  Two Player Local`
-          : `${a.name}  vs  ${b.name} (CPU)  ·  Player vs Computer`;
+        label.innerHTML = `${a.name} <span class="vs">VS</span> ${b.name} <span class="fight-meta">· ${selectedMode === '2p' ? 'Two Player Local' : 'Player vs Computer'}</span>`;
       }
       if (api.onEnterArena) api.onEnterArena(selectedMode, a, b);
       show('arena');
@@ -294,6 +382,64 @@ export function initMenu(api) {
 
   // ---------- Navigation wiring ----------
   const bind = (id, fn) => { const el = $(id); if (el) el.addEventListener('click', fn); };
+
+  // ---------- New navigation (redesign) ----------
+  function closeNavOverlay() {
+    const ov = $('nav-overlay');
+    if (ov) { ov.classList.remove('open'); ov.setAttribute('aria-hidden', 'true'); }
+    const btn = $('btn-nav-menu');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+  function openNavOverlay() {
+    const ov = $('nav-overlay');
+    if (ov) { ov.classList.add('open'); ov.setAttribute('aria-hidden', 'false'); }
+    const btn = $('btn-nav-menu');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+  }
+  bind('btn-nav-menu', openNavOverlay);
+  bind('btn-nav-close', closeNavOverlay);
+  const goModes = () => { closeNavOverlay(); show('modes'); };
+  const goFighters = () => { closeNavOverlay(); openCharacterSelect('pvc'); };
+  const goArena = () => {
+    closeNavOverlay();
+    // Arena needs confirmed fighters; otherwise start character select.
+    if (p1 && p2) show('arena');
+    else openCharacterSelect('pvc');
+  };
+  const goPlay = () => { closeNavOverlay(); show('modes'); };
+  bind('nav-home', () => show('menu'));
+  bind('nav-modes', goModes);
+  bind('nav-fighters', goFighters);
+  bind('nav-arena', goArena);
+  bind('nav-play', goPlay);
+  bind('ov-modes', goModes);
+  bind('ov-fighters', goFighters);
+  bind('ov-arena', goArena);
+  bind('ov-play', goPlay);
+  bind('ov-how', () => { closeNavOverlay(); openModal('modal-how'); });
+  bind('ov-settings', () => { closeNavOverlay(); openModal('modal-settings'); });
+  bind('foot-modes', goModes);
+  bind('foot-fighters', goFighters);
+  bind('foot-arena', goArena);
+  bind('foot-settings', () => openModal('modal-settings'));
+  bind('btn-arena-enter', () => show('modes'));
+
+  // Featured fighters strip: open character select focused on that fighter.
+  document.querySelectorAll('#featured-strip [data-char]').forEach((card) => {
+    card.addEventListener('click', () => {
+      openCharacterSelect('pvc');
+      focusCharacter(card.dataset.char);
+    });
+  });
+  // Strip scroll buttons (text arrows, not icons).
+  bind('featured-prev', () => {
+    const strip = $('featured-strip');
+    if (strip) strip.scrollBy({ left: -320, behavior: 'smooth' });
+  });
+  bind('featured-next', () => {
+    const strip = $('featured-strip');
+    if (strip) strip.scrollBy({ left: 320, behavior: 'smooth' });
+  });
 
   bind('btn-play', () => show('modes'));
   bind('btn-modes', () => show('modes'));
@@ -322,14 +468,14 @@ export function initMenu(api) {
     const on = !preview.getAutoRotate();
     preview.setAutoRotate(on);
     const btn = $('btn-preview-rotate');
-    if (btn) btn.textContent = on ? '⟳ Auto-rotate: On' : '⟳ Auto-rotate: Off';
+    if (btn) btn.textContent = on ? 'Auto-rotate: On' : 'Auto-rotate: Off';
   });
   bind('btn-preview-walk', () => {
     if (!preview) return;
     previewWalk = !previewWalk;
     preview.setAnimation(previewWalk ? 'walk' : 'idle');
     const btn = $('btn-preview-walk');
-    if (btn) btn.textContent = previewWalk ? '🚶 Walking — tap to stop' : '🚶 Walk Preview';
+    if (btn) btn.textContent = previewWalk ? 'Walking — tap to stop' : 'Walk Preview';
   });
 
   // Swap P1/P2 pick order in 2P mode (small, real utility)
@@ -355,7 +501,10 @@ export function initMenu(api) {
     m.addEventListener('click', (e) => { if (e.target === m) m.classList.remove('open'); });
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') document.querySelectorAll('.modal.open').forEach((m) => m.classList.remove('open'));
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal.open').forEach((m) => m.classList.remove('open'));
+      closeNavOverlay();
+    }
   });
 
   // ---------- Settings (real, persisted) ----------
@@ -377,6 +526,7 @@ export function initMenu(api) {
       saveSettings(settings);
       if (api.onQualityChange) api.onQualityChange(settings.quality);
       if (preview) preview.setQuality(settings.quality);
+      if (heroPreview) heroPreview.setQuality(settings.quality);
       showToast(`Quality set to ${settings.quality}.`);
     });
   }
@@ -388,6 +538,7 @@ export function initMenu(api) {
     if (qualitySelect) qualitySelect.value = 'high';
     if (api.onQualityChange) api.onQualityChange('high');
     if (preview) preview.setQuality('high');
+    if (heroPreview) heroPreview.setQuality('high');
     showToast('Settings reset to defaults.');
   });
 
@@ -397,9 +548,11 @@ export function initMenu(api) {
   bind('btn-phase2', () => openModal('modal-phase2'));
 
   // Initial render (menu screen); the preview is created lazily on
-  // first open so the menu stays fast.
+  // first open so the menu stays fast. The hero showcase starts now —
+  // it is the first thing on the menu screen.
   focused = CHARACTERS[0].id;
   renderDetail(CHARACTERS[0]);
   renderGrid();
+  ensureHeroPreview();
   return { show, showToast, openCharacterSelect };
 }

@@ -62,7 +62,7 @@ function addHair(headGroup, style, hairMat, skinMat) {
     const tail = mesh(new THREE.CylinderGeometry(0.06, 0.045, 0.5, 8), hairMat, 0, 0.05, -0.3);
     tail.rotation.x = 0.9;
     headGroup.add(tail);
-    const tie = mesh(new THREE.TorusGeometry(0.07, 0.02, 8, 16), mat(0x4f7df3, 0.5), 0, 0.18, -0.2);
+    const tie = mesh(new THREE.TorusGeometry(0.07, 0.02, 8, 16), mat(0xBC5222, 0.5), 0, 0.18, -0.2);
     tie.rotation.x = 0.9;
     headGroup.add(tie);
   } else if (style === 'braid') {
@@ -74,7 +74,7 @@ function addHair(headGroup, style, hairMat, skinMat) {
   } else if (style === 'topknot') {
     headGroup.add(mesh(new THREE.SphereGeometry(R * 0.98, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.45), hairMat, 0, 0.05, 0));
     headGroup.add(mesh(new THREE.SphereGeometry(0.09, 12, 10), hairMat, 0, 0.32, 0));
-    headGroup.add(mesh(new THREE.TorusGeometry(0.09, 0.018, 8, 16), mat(0x4f7df3, 0.5), 0, 0.28, 0));
+    headGroup.add(mesh(new THREE.TorusGeometry(0.09, 0.018, 8, 16), mat(0xBC5222, 0.5), 0, 0.28, 0));
   } else if (style === 'bald-beard') {
     // No hair — beard instead, so the silhouette stays unique.
     headGroup.add(mesh(new THREE.BoxGeometry(0.3, 0.16, 0.1), hairMat, 0, -0.16, 0.16));
@@ -140,9 +140,9 @@ export function buildFighterModel(char) {
   const shirtMat = mat(new THREE.Color(char.color), 0.6);
   const shortsMat = mat(new THREE.Color(char.colorDark), 0.6);
   const hairMat = mat(0x14161a, 0.8);
-  const gloveMat = mat(0x1c1f26, 0.45);
-  const shoeMat = mat(0x0a0a0c, 0.5);
-  const accentMat = mat(0x4f7df3, 0.5);
+  const gloveMat = mat(0x1E334E, 0.45);
+  const shoeMat = mat(0x0A1424, 0.5);
+  const accentMat = mat(0xBC5222, 0.5);
 
   // ---- Legs (hip pivots at y 0.82) ----
   const legGeo = new THREE.CylinderGeometry(b.limbR, b.limbR * 0.85, 0.72, 10);

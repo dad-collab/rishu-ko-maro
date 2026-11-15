@@ -4,9 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="description" content="RISHU.COM — a premium 3D browser fighting game. Phase 2: six original fighters, live 3D character preview and arena preview." />
-  <meta name="theme-color" content="#0a0a0c" />
+  <meta name="theme-color" content="#0E1B2E" />
   <title>RISHU.COM — 3D Fighting Game</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2314161a'/%3E%3Cpath d='M18 46V18h22l6 6-6 6H18m16 0 10 16' fill='none' stroke='%234f7df3' stroke-width='6' stroke-linejoin='miter'/%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230E1B2E'/%3E%3Cpath d='M20 46V18h18l5 5-5 5H20m13 0 9 18' fill='none' stroke='%23F2EDE3' stroke-width='3.5' stroke-linejoin='miter'/%3E%3Ccircle cx='33' cy='28' r='2.6' fill='%23BC5222'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
   <script type="importmap">
   {
@@ -22,9 +25,8 @@
   <!-- Loading screen -->
   <div id="loading" role="status" aria-live="polite">
     <svg class="loading-logo" viewBox="0 0 96 96" aria-hidden="true">
-      <rect width="96" height="96" rx="20" fill="#14161a" stroke="#2c303a"/>
-      <path d="M26 70V26h30l9 9-9 9H26m22 0 15 26" fill="none" stroke="#4f7df3" stroke-width="7" stroke-linejoin="miter"/>
-      <circle cx="48" cy="48" r="3.5" fill="#f5f6fa"/>
+      <path d="M28 70V26h28l8 8-8 8H28m20 0 14 36" fill="none" stroke="#F2EDE3" stroke-width="5" stroke-linejoin="miter"/>
+      <circle cx="48" cy="42" r="4" fill="#BC5222"/>
     </svg>
     <h1 class="loading-name">RISHU<span>.COM</span></h1>
     <p class="loading-tag">Premium 3D Fighting — Phase 2</p>
@@ -35,141 +37,289 @@
   </div>
 
   <div id="app" class="hidden-until-ready">
-    <header class="topbar">
-      <div class="brand">
-        <svg class="brand-mark" viewBox="0 0 96 96" aria-hidden="true">
-          <rect width="96" height="96" rx="20" fill="#14161a" stroke="#2c303a"/>
-          <path d="M26 70V26h30l9 9-9 9H26m22 0 15 26" fill="none" stroke="#4f7df3" stroke-width="7" stroke-linejoin="miter"/>
-          <circle cx="48" cy="48" r="3.5" fill="#f5f6fa"/>
-        </svg>
-        <div>
-          <div class="brand-name">RISHU<span>.COM</span></div>
-          <div class="brand-sub">3D Fighting · Phase 2</div>
+    <header class="site-nav">
+      <div class="nav-inner">
+        <button class="wordmark" id="nav-home" type="button">RISHU<span>.COM</span></button>
+        <nav class="nav-links" aria-label="Primary">
+          <button id="nav-modes" type="button">Modes</button>
+          <button id="nav-fighters" type="button">Fighters</button>
+          <button id="nav-arena" type="button">Arena</button>
+          <button id="btn-how" type="button">How to Play</button>
+        </nav>
+        <div class="nav-right">
+          <button class="nav-settings" id="btn-settings" type="button">Settings</button>
+          <button class="btn btn-primary btn-small btn-nav-play" id="nav-play" type="button">Play Now</button>
+          <button class="nav-menu-btn" id="btn-nav-menu" type="button" aria-expanded="false" aria-controls="nav-overlay">Menu</button>
         </div>
       </div>
-      <nav class="top-actions" aria-label="Top actions">
-        <button class="btn btn-small btn-ghost" id="btn-how" type="button">How to Play</button>
-        <button class="btn btn-small btn-ghost" id="btn-settings" type="button">⚙ Settings</button>
-        <button class="btn btn-small" id="btn-fullscreen" type="button">⤢ Fullscreen</button>
-      </nav>
     </header>
+
+    <!-- Full-screen menu overlay (mobile) -->
+    <div id="nav-overlay" role="dialog" aria-label="Menu" aria-hidden="true">
+      <div class="nav-overlay-top">
+        <span class="wordmark">RISHU<span>.COM</span></span>
+        <button id="btn-nav-close" type="button">Close</button>
+      </div>
+      <nav class="nav-overlay-links" aria-label="Menu">
+        <button id="ov-modes" type="button"><i>01</i>Modes</button>
+        <button id="ov-fighters" type="button"><i>02</i>Fighters</button>
+        <button id="ov-arena" type="button"><i>03</i>Arena</button>
+        <button id="ov-how" type="button"><i>04</i>How to Play</button>
+        <button id="ov-settings" type="button"><i>05</i>Settings</button>
+      </nav>
+      <button class="btn btn-primary btn-block" id="ov-play" type="button">Play Now</button>
+    </div>
 
     <main>
       <!-- ============ MAIN MENU ============ -->
       <section class="screen active" id="screen-menu" aria-label="Main menu">
-        <div class="hero">
-          <svg class="hero-logo" viewBox="0 0 96 96" aria-hidden="true">
-            <rect width="96" height="96" rx="20" fill="#14161a" stroke="#2c303a"/>
-            <path d="M26 70V26h30l9 9-9 9H26m22 0 15 26" fill="none" stroke="#4f7df3" stroke-width="7" stroke-linejoin="miter"/>
-            <circle cx="48" cy="48" r="3.5" fill="#f5f6fa"/>
-          </svg>
-          <h1>RISHU<span>.COM</span></h1>
-          <p>An original 3D fighting game. Six original fighters. One arena. No copies, no clutter — just the fight.</p>
-          <div class="hero-cta">
-            <button class="btn btn-primary" id="btn-play" type="button">▶ Play Now</button>
-            <button class="btn" id="btn-characters" type="button">Choose Fighter</button>
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <p class="kicker">Season 01 — Six Fighters · One Arena</p>
+            <h1>Step into<br />the <em>ring.</em></h1>
+            <p class="standfirst">An original 3D fighting game. Six original fighters. One arena. No copies, no clutter — just the fight.</p>
+            <div class="hero-cta">
+              <button class="btn btn-primary btn-hero" id="btn-play" type="button">Play Now</button>
+              <button class="text-link" id="btn-characters" type="button">Choose your fighter →</button>
+            </div>
+            <dl class="stat-strip">
+              <div><dt>06</dt><dd>Fighters</dd></div>
+              <div><dt>01</dt><dd>Arena</dd></div>
+              <div><dt>03</dt><dd>Modes</dd></div>
+            </dl>
           </div>
-          <div><span class="phase-pill"><b>Phase 2</b> — 6 Fighters · Live 3D Preview · Animations &nbsp;·&nbsp; Fighting gameplay arrives in Phase 3</span></div>
+          <div class="hero-stage">
+            <div class="watermark" aria-hidden="true">RISHU</div>
+            <div id="hero-preview" aria-label="3D fighter showcase — drag to rotate">
+              <span class="tick tl" aria-hidden="true"></span>
+              <span class="tick tr" aria-hidden="true"></span>
+              <span class="tick bl" aria-hidden="true"></span>
+              <span class="tick br" aria-hidden="true"></span>
+              <div class="preview-hint">Drag to rotate · Auto-rotate on</div>
+              <div class="hero-caption"><b>Rishu — The Challenger</b><span>Live 3D · drag to rotate</span></div>
+            </div>
+          </div>
         </div>
 
         <div class="section">
           <div class="section-head">
-            <div>
-              <h2>Game Modes</h2>
-              <p>Pick how you want to step into the arena.</p>
-            </div>
+            <p class="kicker">Game modes</p>
+            <h2>Pick your fight.</h2>
+            <p>Three ways into the arena. Two are ready today.</p>
           </div>
-          <div class="cards">
-            <button class="card" id="mode-pvc" type="button">
-              <span class="card-icon" aria-hidden="true">🥊</span>
-              <h3>Player vs Computer</h3>
+          <div class="mode-grid">
+            <button class="mode-card mode-card--wide" id="mode-pvc" type="button">
+              <span class="mode-num">01</span>
+              <span class="mode-title">Player vs Computer</span>
               <p>Pick your fighter and face a CPU opponent in the arena preview.</p>
-              <span class="card-cta">Select fighter →</span>
+              <ul class="mode-points">
+                <li>Your pick, your rules</li>
+                <li>CPU opponent picked at random</li>
+                <li>Full arena preview with your fighters</li>
+              </ul>
+              <span class="mode-cta">Select fighter →</span>
             </button>
-            <button class="card" id="mode-2p" type="button">
-              <span class="card-icon" aria-hidden="true">👥</span>
-              <h3>Two Player Local</h3>
+            <button class="mode-card" id="mode-2p" type="button">
+              <span class="mode-num">02</span>
+              <span class="mode-title">Two Player Local</span>
               <p>Two players, one screen. P1 picks first, then P2 — same keyboard, same arena.</p>
-              <span class="card-cta">Pick both fighters →</span>
+              <span class="mode-cta">Pick both fighters →</span>
             </button>
-            <div class="card disabled" id="mode-online" aria-disabled="true">
+            <div class="mode-banner" aria-disabled="true">
+              <span class="mode-num">03</span>
+              <div>
+                <h3>Online Multiplayer</h3>
+                <p>Fight players around the world. Online play is not in Phase 2 yet.</p>
+              </div>
               <span class="badge-soon">Coming Soon</span>
-              <span class="card-icon" aria-hidden="true">🌐</span>
-              <h3>Online Multiplayer</h3>
-              <p>Fight players around the world. Online play is not in Phase 2 yet.</p>
-              <span class="card-cta">Coming Soon</span>
             </div>
           </div>
         </div>
 
         <div class="section">
-          <div class="section-head">
+          <div class="arena-preview">
+            <div class="arena-preview-copy">
+              <p class="kicker">The arena</p>
+              <h2>The Octagon.</h2>
+              <p>One ring, built for the fight. The same arena you will step into — rendered live in 3D, with your fighters standing in it.</p>
+              <ul class="fact-list">
+                <li>Octagonal ring — 8 sides, 4 posts</li>
+                <li>Three rope heights, orbit camera</li>
+                <li>Procedural mat with centre mark</li>
+                <li>Cinematic lighting, real shadows</li>
+              </ul>
+              <button class="text-link" id="btn-arena-enter" type="button">Enter the arena →</button>
+            </div>
+            <figure class="arena-diagram">
+              <svg viewBox="0 0 400 260" role="img" aria-label="Diagram of the octagonal ring: eight sides, four corner posts, centre mark">
+                <g fill="none" stroke="#9FB0C3" stroke-width="1.5">
+                  <polygon points="140,30 260,30 330,90 330,170 260,230 140,230 70,170 70,90" />
+                  <polygon points="165,65 235,65 275,105 275,155 235,195 165,195 125,155 125,105" opacity="0.45" />
+                </g>
+                <g fill="#C9CDD3">
+                  <circle cx="140" cy="30" r="4" /><circle cx="260" cy="30" r="4" />
+                  <circle cx="330" cy="90" r="4" /><circle cx="330" cy="170" r="4" />
+                  <circle cx="260" cy="230" r="4" /><circle cx="140" cy="230" r="4" />
+                  <circle cx="70" cy="170" r="4" /><circle cx="70" cy="90" r="4" />
+                </g>
+                <circle cx="200" cy="130" r="7" fill="#BC5222" />
+                <circle cx="200" cy="130" r="16" fill="none" stroke="#BC5222" stroke-width="1.5" />
+                <g stroke="#5A6B7E" stroke-width="1">
+                  <line x1="140" y1="14" x2="140" y2="30" /><line x1="260" y1="14" x2="260" y2="30" />
+                  <line x1="70" y1="244" x2="70" y2="230" /><line x1="330" y1="244" x2="330" y2="230" />
+                </g>
+                <g fill="#9FB0C3" font-family="Inter, sans-serif" font-size="11" letter-spacing="2">
+                  <text x="200" y="12" text-anchor="middle">8 SIDES</text>
+                  <text x="200" y="256" text-anchor="middle">4 POSTS · 3 ROPE HEIGHTS</text>
+                </g>
+              </svg>
+              <figcaption>Octagonal ring — plan view</figcaption>
+            </figure>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-head section-head-row">
             <div>
-              <h2>Why RISHU.COM</h2>
-              <p>Built clean, built original — Phase 1 is the foundation.</p>
+              <p class="kicker">The roster</p>
+              <h2>Featured fighters.</h2>
+            </div>
+            <div class="strip-nav">
+              <button id="featured-prev" type="button" aria-label="Scroll fighters back">←</button>
+              <button id="featured-next" type="button" aria-label="Scroll fighters forward">→</button>
             </div>
           </div>
-          <div class="features">
-            <div class="feature"><h3>Original fighters</h3><p>Six original characters — Rishu, Ayaan, Kabir, Zara, Dev and Meera — each with a unique look, style and stats.</p></div>
-            <div class="feature"><h3>Real 3D arena</h3><p>Three.js + WebGL ring with professional lighting, shadows and a cinematic camera you can orbit.</p></div>
-            <div class="feature"><h3>Fast &amp; responsive</h3><p>Works on desktop, laptop, tablet and mobile. No horizontal scrolling, touch-friendly buttons.</p></div>
+          <div class="fighter-strip" id="featured-strip">
+            <button class="fighter-card" type="button" data-char="rishu">
+              <span class="fighter-num">01</span>
+              <span class="fighter-name">Rishu</span>
+              <span class="fighter-title">The Challenger · Balanced Striker</span>
+              <span class="fighter-mini">
+                <span class="mini-row"><span>Strength</span><span class="mini-bar"><i style="width:70%"></i></span><b>7</b></span>
+                <span class="mini-row"><span>Speed</span><span class="mini-bar"><i style="width:70%"></i></span><b>7</b></span>
+              </span>
+              <span class="fighter-cta">View fighter →</span>
+            </button>
+            <button class="fighter-card" type="button" data-char="ayaan">
+              <span class="fighter-num">02</span>
+              <span class="fighter-name">Ayaan</span>
+              <span class="fighter-title">Storm Fist · Aggressive Brawler</span>
+              <span class="fighter-mini">
+                <span class="mini-row"><span>Strength</span><span class="mini-bar"><i style="width:90%"></i></span><b>9</b></span>
+                <span class="mini-row"><span>Special Power</span><span class="mini-bar"><i style="width:80%"></i></span><b>8</b></span>
+              </span>
+              <span class="fighter-cta">View fighter →</span>
+            </button>
+            <button class="fighter-card" type="button" data-char="kabir">
+              <span class="fighter-num">03</span>
+              <span class="fighter-name">Kabir</span>
+              <span class="fighter-title">Iron Wall · Defensive Counter</span>
+              <span class="fighter-mini">
+                <span class="mini-row"><span>Defense</span><span class="mini-bar"><i style="width:90%"></i></span><b>9</b></span>
+                <span class="mini-row"><span>Special Power</span><span class="mini-bar"><i style="width:70%"></i></span><b>7</b></span>
+              </span>
+              <span class="fighter-cta">View fighter →</span>
+            </button>
+            <button class="fighter-card" type="button" data-char="zara">
+              <span class="fighter-num">04</span>
+              <span class="fighter-name">Zara</span>
+              <span class="fighter-title">Shadow Step · Speed Specialist</span>
+              <span class="fighter-mini">
+                <span class="mini-row"><span>Speed</span><span class="mini-bar"><i style="width:100%"></i></span><b>10</b></span>
+                <span class="mini-row"><span>Special Power</span><span class="mini-bar"><i style="width:90%"></i></span><b>9</b></span>
+              </span>
+              <span class="fighter-cta">View fighter →</span>
+            </button>
+            <button class="fighter-card" type="button" data-char="dev">
+              <span class="fighter-num">05</span>
+              <span class="fighter-name">Dev</span>
+              <span class="fighter-title">The Forge · Heavyweight Grappler</span>
+              <span class="fighter-mini">
+                <span class="mini-row"><span>Strength</span><span class="mini-bar"><i style="width:100%"></i></span><b>10</b></span>
+                <span class="mini-row"><span>Defense</span><span class="mini-bar"><i style="width:80%"></i></span><b>8</b></span>
+              </span>
+              <span class="fighter-cta">View fighter →</span>
+            </button>
+            <button class="fighter-card" type="button" data-char="meera">
+              <span class="fighter-num">06</span>
+              <span class="fighter-name">Meera</span>
+              <span class="fighter-title">Storm Dancer · Acrobatic Kicker</span>
+              <span class="fighter-mini">
+                <span class="mini-row"><span>Speed</span><span class="mini-bar"><i style="width:90%"></i></span><b>9</b></span>
+                <span class="mini-row"><span>Special Power</span><span class="mini-bar"><i style="width:90%"></i></span><b>9</b></span>
+              </span>
+              <span class="fighter-cta">View fighter →</span>
+            </button>
           </div>
         </div>
       </section>
 
       <!-- ============ GAME MODES ============ -->
       <section class="screen" id="screen-modes" aria-label="Game modes">
-        <div class="section-head">
-          <div>
-            <h2>Game Modes</h2>
-            <p>Choose a mode to continue to character selection.</p>
-          </div>
-          <button class="btn btn-small btn-ghost" id="btn-back-menu" type="button">← Back to Menu</button>
+        <div class="section-head" style="margin-top:32px;">
+          <p class="kicker">Game modes</p>
+          <h2>Pick your fight.</h2>
+          <p>Choose a mode to continue to character selection.</p>
         </div>
-        <div class="cards">
-          <button class="card" id="mode-pvc-2" type="button">
-            <span class="card-icon" aria-hidden="true">🥊</span>
-            <h3>Player vs Computer</h3>
+        <div class="mode-grid">
+          <button class="mode-card mode-card--wide" id="mode-pvc-2" type="button">
+            <span class="mode-num">01</span>
+            <span class="mode-title">Player vs Computer</span>
             <p>Pick your fighter and face a CPU opponent in the arena preview.</p>
-            <span class="card-cta">Select fighter →</span>
+            <ul class="mode-points">
+              <li>Your pick, your rules</li>
+              <li>CPU opponent picked at random</li>
+              <li>Full arena preview with your fighters</li>
+            </ul>
+            <span class="mode-cta">Select fighter →</span>
           </button>
-          <button class="card" id="mode-2p-2" type="button">
-            <span class="card-icon" aria-hidden="true">👥</span>
-            <h3>Two Player Local</h3>
+          <button class="mode-card" id="mode-2p-2" type="button">
+            <span class="mode-num">02</span>
+            <span class="mode-title">Two Player Local</span>
             <p>Two players, one screen. P1 picks first, then P2.</p>
-            <span class="card-cta">Pick both fighters →</span>
+            <span class="mode-cta">Pick both fighters →</span>
           </button>
-          <div class="card disabled" aria-disabled="true">
+          <div class="mode-banner" aria-disabled="true">
+            <span class="mode-num">03</span>
+            <div>
+              <h3>Online Multiplayer</h3>
+              <p>Fight players around the world. Online play is not in Phase 2 yet.</p>
+            </div>
             <span class="badge-soon">Coming Soon</span>
-            <span class="card-icon" aria-hidden="true">🌐</span>
-            <h3>Online Multiplayer</h3>
-            <p>Fight players around the world. Online play is not in Phase 2 yet.</p>
-            <span class="card-cta">Coming Soon</span>
           </div>
         </div>
-        <p style="color:var(--muted);margin-top:16px;">Online Multiplayer is clearly marked Coming Soon — the button is disabled and does nothing, by design.</p>
+        <p class="modes-note">Online Multiplayer is clearly marked Coming Soon — the button is disabled and does nothing, by design.</p>
+        <div style="margin-top:24px;">
+          <button class="btn btn-ghost" id="btn-back-menu" type="button">← Back to Menu</button>
+        </div>
       </section>
 
       <!-- ============ CHARACTER SELECT (Phase 2) ============ -->
       <section class="screen" id="screen-characters" aria-label="Character selection">
-        <div class="section-head">
+        <div class="section-head" style="margin-top:32px;">
           <div>
+            <p class="kicker">Character select</p>
             <h2 id="char-title">Choose Your Fighter</h2>
             <p id="char-sub">Tap a fighter to preview them in 3D, then press Select Fighter.</p>
           </div>
+        </div>
+        <div style="margin-top:16px;">
           <button class="btn btn-small btn-ghost" id="btn-back-modes" type="button">← Back to Modes</button>
         </div>
-        <div class="select-layout">
-          <div class="preview-panel">
+        <div class="select-split">
+          <div class="stage">
             <div id="preview-wrap" aria-label="3D character preview — drag to rotate">
-              <div class="preview-hint">🖱 Drag to rotate · Auto-rotate on</div>
+              <div class="preview-hint">Drag to rotate · Auto-rotate on</div>
               <span id="preview-badge" class="preview-badge" hidden>✓ Selected</span>
             </div>
+            <h3 class="stage-name"><span id="stage-name-text">Rishu</span><span class="stage-dot">.</span></h3>
             <div class="preview-controls">
-              <button class="btn btn-small" id="btn-preview-rotate" type="button">⟳ Auto-rotate: On</button>
-              <button class="btn btn-small" id="btn-preview-walk" type="button">🚶 Walk Preview</button>
+              <button class="btn btn-small" id="btn-preview-rotate" type="button">Auto-rotate: On</button>
+              <button class="btn btn-small" id="btn-preview-walk" type="button">Walk Preview</button>
               <button class="btn btn-small btn-primary" id="btn-select-fighter" type="button">Select Fighter</button>
             </div>
+          </div>
+          <aside class="detail-panel">
             <div class="preview-detail">
               <h3 id="preview-name">—</h3>
               <p id="preview-tagline" class="preview-tagline">—</p>
@@ -177,25 +327,25 @@
               <p class="preview-special">Special move: <b id="preview-special">—</b> <span class="badge-soon">Phase 3</span></p>
               <div id="preview-stats" class="preview-stats"><!-- filled by js/menu.js --></div>
             </div>
-          </div>
-          <div class="select-side">
-            <div class="char-grid" id="char-grid"><!-- filled by js/menu.js --></div>
-            <div class="pick-bar">
-              <p id="pick-hint">Tap a fighter to preview.</p>
-              <div class="slots"><b id="slot-p1">P1: —</b><b id="slot-p2">CPU: —</b></div>
-              <button class="btn btn-small btn-ghost" id="btn-swap-pick" type="button">Swap Pick (P1 / P2)</button>
-              <button class="btn btn-primary" id="btn-confirm-fighters" type="button" disabled>Select a Fighter to Continue</button>
-            </div>
-          </div>
+          </aside>
+        </div>
+        <p class="carousel-label">The roster — swipe to browse</p>
+        <div class="carousel" id="char-grid"><!-- filled by js/menu.js --></div>
+        <div class="pick-bar">
+          <p id="pick-hint">Tap a fighter to preview.</p>
+          <div class="slots"><b id="slot-p1">P1: —</b><b id="slot-p2">CPU: —</b></div>
+          <button class="text-link" id="btn-swap-pick" type="button">Swap Pick (P1 / P2)</button>
+          <button class="btn btn-primary" id="btn-confirm-fighters" type="button" disabled>Select a Fighter to Continue</button>
         </div>
       </section>
 
       <!-- ============ ARENA PREVIEW ============ -->
       <section class="screen" id="screen-arena" aria-label="Arena preview">
-        <div class="arena-head">
+        <div class="arena-band">
           <div>
+            <p class="kicker">Arena preview</p>
             <h2>Arena Preview</h2>
-            <p id="arena-fight-label" style="margin:4px 0 0;">— vs —</p>
+            <p id="arena-fight-label">— vs —</p>
           </div>
           <button class="btn btn-small btn-ghost" id="btn-back-arena" type="button">← Change Fighters</button>
         </div>
@@ -205,22 +355,42 @@
           in the ring. Fighting gameplay (punches, blocks, health, rounds, win/lose)
           is <b>not</b> in Phase 2 — it comes in Phase 3. Nothing here is faked.
         </div>
-        <div id="arena-wrap">
-          <div class="arena-hint">🖱 Drag to orbit the camera · Scroll to zoom · Touch: drag to orbit</div>
+        <div class="arena-frame">
+          <span class="tick tl" aria-hidden="true"></span>
+          <span class="tick tr" aria-hidden="true"></span>
+          <span class="tick bl" aria-hidden="true"></span>
+          <span class="tick br" aria-hidden="true"></span>
+          <div id="arena-wrap"></div>
         </div>
+        <p class="arena-caption">Drag to orbit the camera · Scroll to zoom · Touch: drag to orbit — the camera slowly orbits on its own.</p>
         <div class="arena-actions">
           <button class="btn" id="btn-modes" type="button">Game Modes</button>
-          <button class="btn btn-ghost" id="btn-phase2" type="button">What’s in Phase 3?</button>
+          <button class="text-link" id="btn-phase2" type="button">What’s in Phase 3?</button>
+          <button class="text-link" id="btn-fullscreen" type="button">Fullscreen</button>
         </div>
       </section>
     </main>
 
     <footer class="footer">
-      <div>RISHU.COM — Phase 2 · Original game, original fighters, original branding.</div>
-      <div class="foot-links">
-        <button class="btn btn-small btn-ghost" id="btn-about" type="button">About</button>
-        <button class="btn btn-small btn-ghost" id="btn-how-footer" type="button">How to Play</button>
+      <div class="foot-grid">
+        <div class="foot-col">
+          <h4>Game</h4>
+          <button class="foot-link" id="foot-modes" type="button">Modes</button>
+          <button class="foot-link" id="foot-fighters" type="button">Fighters</button>
+          <button class="foot-link" id="foot-arena" type="button">Arena</button>
+        </div>
+        <div class="foot-col">
+          <h4>Help</h4>
+          <button class="foot-link" id="btn-how-footer" type="button">How to Play</button>
+          <button class="foot-link" id="foot-settings" type="button">Settings</button>
+        </div>
+        <div class="foot-col">
+          <h4>About</h4>
+          <button class="foot-link" id="btn-about" type="button">About RISHU.COM</button>
+          <p>Phase 2 — six fighters, live 3D preview, arena preview. Fighting gameplay arrives in Phase 3.</p>
+        </div>
       </div>
+      <p class="colophon">RISHU.COM — Phase 2 · Original game, original fighters, original branding.</p>
     </footer>
   </div>
 

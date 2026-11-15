@@ -44,8 +44,8 @@ export function createCharacterPreview(container, opts = {}) {
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x101116);
-  scene.fog = new THREE.Fog(0x101116, 9, 16);
+  scene.background = new THREE.Color(0x0E1B2E);
+  scene.fog = new THREE.Fog(0x0E1B2E, 9, 16);
 
   const camera = new THREE.PerspectiveCamera(
     42,
@@ -55,39 +55,39 @@ export function createCharacterPreview(container, opts = {}) {
   camera.position.set(0, 1.7, 4.6);
   camera.lookAt(0, 1.15, 0);
 
-  // Lighting: soft key + blue rim, matching the arena's look.
+  // Lighting: soft key + steel rim, matching the arena's look.
   scene.add(new THREE.AmbientLight(0x8a93a8, 0.7));
   const key = new THREE.DirectionalLight(0xffffff, 2.0);
   key.position.set(4, 6, 4);
   key.castShadow = q.shadows;
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0x4f7df3, 0.9);
+  const rim = new THREE.DirectionalLight(0x5B7A99, 0.9);
   rim.position.set(-4, 3, -3);
   scene.add(rim);
 
   // Ground disc + accent ring the fighter stands on.
   const ground = new THREE.Mesh(
     new THREE.CircleGeometry(1.5, 48),
-    new THREE.MeshStandardMaterial({ color: 0x1c1f26, roughness: 0.9 })
+    new THREE.MeshStandardMaterial({ color: 0x16283F, roughness: 0.9 })
   );
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
   const ring = new THREE.Mesh(
     new THREE.TorusGeometry(1.05, 0.03, 8, 64),
-    new THREE.MeshStandardMaterial({ color: 0x4f7df3, roughness: 0.4, metalness: 0.3 })
+    new THREE.MeshStandardMaterial({ color: 0xBC5222, roughness: 0.4, metalness: 0.3 })
   );
   ring.rotation.x = Math.PI / 2;
   ring.position.y = 0.02;
   scene.add(ring);
-  // Selection glow ring — pulses when a fighter is selected/confirmed.
-  const glow = new THREE.Mesh(
+  // Selection ring — pulses when a fighter is selected/confirmed.
+  const selectRing = new THREE.Mesh(
     new THREE.TorusGeometry(1.22, 0.035, 8, 64),
-    new THREE.MeshBasicMaterial({ color: 0x4f7df3, transparent: true, opacity: 0.25 })
+    new THREE.MeshBasicMaterial({ color: 0xBC5222, transparent: true, opacity: 0.25 })
   );
-  glow.rotation.x = Math.PI / 2;
-  glow.position.y = 0.02;
-  scene.add(glow);
+  selectRing.rotation.x = Math.PI / 2;
+  selectRing.position.y = 0.02;
+  scene.add(selectRing);
 
   let model = null;
   let animator = null;
@@ -134,17 +134,17 @@ export function createCharacterPreview(container, opts = {}) {
     animator = createFighterAnimator(model, { initial: 'idle' });
     currentChar = char;
     if (animate && animator) animator.setState('select');
-    // Ring + glow follow the fighter's accent colour.
+    // Ring + selectRing follow the fighter's accent colour.
     ring.material.color.set(char.color);
-    glow.material.color.set(char.color);
+    selectRing.material.color.set(char.color);
   }
 
   function setAnimation(state) {
     if (animator) animator.setState(state);
   }
 
-  function pulseGlow() {
-    glow.material.opacity = 0.9;
+  function pulseRing() {
+    selectRing.material.opacity = 0.9;
   }
 
   function resize() {
@@ -176,8 +176,8 @@ export function createCharacterPreview(container, opts = {}) {
         targetRotY = model.group.rotation.y;
       }
     }
-    glow.material.opacity += (0.25 - glow.material.opacity) * Math.min(1, dt * 3);
-    glow.scale.setScalar(1 + Math.sin(t * 2) * 0.03);
+    selectRing.material.opacity += (0.25 - selectRing.material.opacity) * Math.min(1, dt * 3);
+    selectRing.scale.setScalar(1 + Math.sin(t * 2) * 0.03);
     renderer.render(scene, camera);
   }
   tick();
@@ -185,7 +185,7 @@ export function createCharacterPreview(container, opts = {}) {
   return {
     setFighter,
     setAnimation,
-    pulseGlow,
+    pulseRing,
     setAutoRotate(v) { autoRotate = !!v; },
     getAutoRotate: () => autoRotate,
     setQuality(name) {

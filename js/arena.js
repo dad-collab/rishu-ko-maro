@@ -22,8 +22,8 @@ function makeFloorTexture() {
   c.height = 1024;
   const g = c.getContext('2d');
 
-  // Dark mat
-  g.fillStyle = '#171a21';
+  // Dark mat (navy stage)
+  g.fillStyle = '#16283F';
   g.fillRect(0, 0, 1024, 1024);
 
   // Subtle checker / mat panels
@@ -36,22 +36,22 @@ function makeFloorTexture() {
     }
   }
 
-  // Outer ring line (electric blue, restrained)
-  g.strokeStyle = '#4F7DF3';
+  // Outer ring line (burnt orange, restrained)
+  g.strokeStyle = '#BC5222';
   g.lineWidth = 10;
   g.beginPath();
   g.arc(512, 512, 430, 0, Math.PI * 2);
   g.stroke();
 
   // Inner ring line
-  g.strokeStyle = 'rgba(79,125,243,0.45)';
+  g.strokeStyle = 'rgba(188,82,34,0.45)';
   g.lineWidth = 4;
   g.beginPath();
   g.arc(512, 512, 300, 0, Math.PI * 2);
   g.stroke();
 
-  // Centre mark — geometric R
-  g.strokeStyle = 'rgba(245,246,250,0.85)';
+  // Centre mark — thin-stroke open R (same construction as the wordmark)
+  g.strokeStyle = 'rgba(242,237,227,0.85)';
   g.lineWidth = 14;
   g.lineJoin = 'miter';
   g.beginPath();
@@ -64,8 +64,13 @@ function makeFloorTexture() {
   g.moveTo(512, 482);
   g.lineTo(582, 602);
   g.stroke();
+  // Orange dot at the diagonal joint
+  g.fillStyle = 'rgba(188,82,34,0.9)';
+  g.beginPath();
+  g.arc(512, 482, 12, 0, Math.PI * 2);
+  g.fill();
 
-  g.fillStyle = 'rgba(245,246,250,0.55)';
+  g.fillStyle = 'rgba(242,237,227,0.55)';
   g.font = '600 34px Arial, sans-serif';
   g.textAlign = 'center';
   g.fillText('R I S H U . C O M', 512, 700);
@@ -121,8 +126,8 @@ export function createArena(container, opts = {}) {
 
   onProgress(30, 'Building arena…');
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a0a0c);
-  scene.fog = new THREE.Fog(0x0a0a0c, 18, 42);
+  scene.background = new THREE.Color(0x0E1B2E);
+  scene.fog = new THREE.Fog(0x0E1B2E, 18, 42);
 
   const camera = new THREE.PerspectiveCamera(
     50,
@@ -146,7 +151,7 @@ export function createArena(container, opts = {}) {
   key.shadow.camera.far = 30;
   scene.add(key);
 
-  const fill = new THREE.DirectionalLight(0x4f7df3, 0.55);
+  const fill = new THREE.DirectionalLight(0x5B7A99, 0.55);
   fill.position.set(-6, 4, -4);
   scene.add(fill);
 
@@ -164,7 +169,7 @@ export function createArena(container, opts = {}) {
     scene.add(s, s.target);
     const fixture = new THREE.Mesh(
       new THREE.CylinderGeometry(0.22, 0.3, 0.18, 16),
-      new THREE.MeshStandardMaterial({ color: 0x1c1f26, roughness: 0.4, metalness: 0.6 })
+      new THREE.MeshStandardMaterial({ color: 0x16283F, roughness: 0.4, metalness: 0.6 })
     );
     fixture.position.set(x, y, z);
     scene.add(fixture);
@@ -174,7 +179,7 @@ export function createArena(container, opts = {}) {
   // ---- Floor: large dark hall floor + raised ring platform ----
   const hallFloor = new THREE.Mesh(
     new THREE.CircleGeometry(22, 48),
-    new THREE.MeshStandardMaterial({ color: 0x101116, roughness: 0.95 })
+    new THREE.MeshStandardMaterial({ color: 0x0A1424, roughness: 0.95 })
   );
   hallFloor.rotation.x = -Math.PI / 2;
   hallFloor.receiveShadow = true;
@@ -182,7 +187,7 @@ export function createArena(container, opts = {}) {
 
   const ringBase = new THREE.Mesh(
     new THREE.CylinderGeometry(5.6, 5.9, 0.55, 8),
-    new THREE.MeshStandardMaterial({ color: 0x1c1f26, roughness: 0.7, metalness: 0.25 })
+    new THREE.MeshStandardMaterial({ color: 0x16283F, roughness: 0.7, metalness: 0.25 })
   );
   ringBase.position.y = 0.275;
   ringBase.receiveShadow = true;
@@ -199,10 +204,10 @@ export function createArena(container, opts = {}) {
   ringMat.receiveShadow = true;
   scene.add(ringMat);
 
-  // Apron trim (electric blue, thin)
+  // Apron trim (burnt orange, thin)
   const trim = new THREE.Mesh(
     new THREE.TorusGeometry(5.55, 0.045, 8, 64),
-    new THREE.MeshStandardMaterial({ color: 0x4f7df3, roughness: 0.4, metalness: 0.4 })
+    new THREE.MeshStandardMaterial({ color: 0xBC5222, roughness: 0.4, metalness: 0.4 })
   );
   trim.rotation.x = Math.PI / 2;
   trim.position.y = 0.56;
@@ -210,9 +215,9 @@ export function createArena(container, opts = {}) {
 
   onProgress(70, 'Raising posts and ropes…');
   // ---- Corner posts + ropes ----
-  const postMat = new THREE.MeshStandardMaterial({ color: 0x2a2e38, roughness: 0.35, metalness: 0.7 });
-  const ropeMat = new THREE.MeshStandardMaterial({ color: 0x4f7df3, roughness: 0.5 });
-  const ropeMat2 = new THREE.MeshStandardMaterial({ color: 0xe8e8ec, roughness: 0.5 });
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x3E5A75, roughness: 0.35, metalness: 0.7 });
+  const ropeMat = new THREE.MeshStandardMaterial({ color: 0xBC5222, roughness: 0.5 });
+  const ropeMat2 = new THREE.MeshStandardMaterial({ color: 0xF2EDE3, roughness: 0.5 });
   const corners = [[-4.6, -4.6], [4.6, -4.6], [4.6, 4.6], [-4.6, 4.6]];
   for (const [x, z] of corners) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 1.5, 12), postMat);
@@ -250,20 +255,20 @@ export function createArena(container, opts = {}) {
   });
 
   onProgress(82, 'Placing fighters…');
-  // ---- Backdrop: dark arena walls + crowd glow strips ----
+  // ---- Backdrop: dark arena walls + crowd light strips ----
   const wall = new THREE.Mesh(
     new THREE.CylinderGeometry(20, 20, 10, 48, 1, true),
-    new THREE.MeshStandardMaterial({ color: 0x12141a, roughness: 0.95, side: THREE.BackSide })
+    new THREE.MeshStandardMaterial({ color: 0x0A1424, roughness: 0.95, side: THREE.BackSide })
   );
   wall.position.y = 5;
   scene.add(wall);
 
-  // Light strips around the wall (restrained blue)
+  // Light strips around the wall (restrained steel)
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2;
     const strip = new THREE.Mesh(
       new THREE.BoxGeometry(1.4, 0.08, 0.08),
-      new THREE.MeshBasicMaterial({ color: i % 3 === 0 ? 0x4f7df3 : 0x2a2e38 })
+      new THREE.MeshBasicMaterial({ color: i % 3 === 0 ? 0x5B7A99 : 0x2A3B52 })
     );
     strip.position.set(Math.cos(a) * 19.5, 6.5, Math.sin(a) * 19.5);
     strip.lookAt(0, 6.5, 0);
@@ -273,7 +278,7 @@ export function createArena(container, opts = {}) {
   // ---- Fighters (Phase 2 models, idle animation) ----
   // Default pair matches the original defaults (Rishu vs Ayaan) until
   // setFighters() is called with the player's selection.
-  const DEFAULT_A = { id: 'rishu', color: '#4F7DF3', colorDark: '#2E4FA8', model: { build: 'average', height: 1, hair: 'spiky', outfit: 'vest', accessory: 'headband' }, skin: 0x8a6a52 };
+  const DEFAULT_A = { id: 'rishu', color: '#BC5222', colorDark: '#7E3410', model: { build: 'average', height: 1, hair: 'spiky', outfit: 'vest', accessory: 'headband' }, skin: 0x8a6a52 };
   const DEFAULT_B = { id: 'ayaan', color: '#E8E8EC', colorDark: '#8A8F9E', model: { build: 'broad', height: 1.02, hair: 'mohawk', outfit: 'hoodie', accessory: 'wristbands' }, skin: 0x6b4a35 };
   function placeFighter(char, x, facing) {
     const m = buildFighterModel(char);

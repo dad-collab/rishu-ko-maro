@@ -7,7 +7,7 @@
 //   idle     — breathing, guard sway, head scan (default)
 //   walk     — leg/arm swing + bob (preview toggle / selection transition)
 //   victory  — arms raised, celebratory bounce (plays on selection confirm)
-//   select   — one full spin + scale pulse + glow (plays on fighter switch)
+//   select   — one full spin + scale pulse + accent ring (plays on fighter switch)
 //
 // PHASE 3 HOOK: setState also accepts the reserved names
 // 'punch', 'kick', 'block', 'hit', 'ko'. In Phase 2 those names are
