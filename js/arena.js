@@ -13,6 +13,7 @@ import { buildFighterModel } from './fighterModels.js';
 import { createFighterAnimator } from './fighterAnimations.js';
 import { createKeyboardInput, createFighterController, resolveSeparation } from './movement.js';
 import { createFightCamera } from './camera.js';
+import { createCinematicCamera } from './cinematicCamera.js';
 import { createTouchControls } from './touchControls.js';
 import { createHud } from './hud.js';
 
@@ -345,6 +346,7 @@ export function createArena(container, opts = {}) {
   let ctrlA = null;
   let ctrlB = null;
   let fightCamera = null;
+  let cinematic = null;
   let keyboard = null;
   let touch = null;
   let hud = null;
@@ -367,6 +369,9 @@ export function createArena(container, opts = {}) {
 
   function togglePause() {
     if (!matchRunning || !hud) return;
+    // Pause is a no-op while the cinematic intro is playing (there is
+    // nothing to pause yet, and pausing would freeze the intro mid-sweep).
+    if (cinematic && cinematic.getState() === 'playing') return;
     hud.setPaused(!hud.isPaused());
   }
 
@@ -413,7 +418,16 @@ export function createArena(container, opts = {}) {
         p2: charB,
         mode,
         before: arenaFrame,
-        onPause: () => { paused = true; },
+        // The HUD Pause button bypasses togglePause(), so the intro
+        // guard lives here too: a pause pressed mid-intro is undone
+        // synchronously (overlay never paints) and the sweep continues.
+        onPause: () => {
+          if (cinematic && cinematic.getState() === 'playing') {
+            if (hud) hud.setPaused(false);
+            return;
+          }
+          paused = true;
+        },
         onResume: () => { paused = false; },
         onQuit: () => { if (opts.onQuitMatch) opts.onQuitMatch(); },
       });
@@ -423,6 +437,17 @@ export function createArena(container, opts = {}) {
       touch.setEnabled(false); // enabled by beginMatch (touch devices only)
     }
 
+    // Cinematic intro: created here, AFTER fightCamera/HUD/input exist
+    // (start() can call onDone synchronously on reduced motion), but
+    // only STARTED by beginMatch() once the arena screen is visible.
+    cinematic = createCinematicCamera({
+      camera,
+      domElement: renderer.domElement,
+      getFighterA: (out) => out.copy(fighterA.model.group.position),
+      getFighterB: (out) => out.copy(fighterB.model.group.position),
+      onDone: finishIntro,
+    });
+
     matchBuilt = true;
     matchRunning = false;
     paused = false;
@@ -431,13 +456,24 @@ export function createArena(container, opts = {}) {
   function beginMatch() {
     if (!matchBuilt || matchRunning) return;
     matchRunning = true;
+    // Cinematic intro first; finishIntro() below starts the fight when
+    // the sweep is done (or skipped, or reduced-motion). Input stays
+    // locked and the HUD timer unstarted until then.
+    if (cinematic) cinematic.start();
+    // Blur any focused button so Enter/Space cannot re-trigger it
+    // while they are also P2-run / P1-jump keys.
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  }
+
+  // Runs exactly once per intro (the cinematic guards its own finish):
+  // hands the live camera pose to the fight camera, then starts the
+  // HUD timer and enables input — so the timer counts FIGHT time.
+  function finishIntro() {
+    if (!matchBuilt) return; // user left during the intro
     if (fightCamera) fightCamera.startFight();
     if (hud) hud.start();
     if (keyboard) keyboard.setEnabled(true);
     if (touch) touch.setEnabled(true);
-    // Blur any focused button so Enter/Space cannot re-trigger it
-    // while they are also P2-run / P1-jump keys.
-    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   }
 
   // Every arena entry is a live match: if a match was built, begin it;
@@ -454,6 +490,7 @@ export function createArena(container, opts = {}) {
     if (!matchBuilt && !matchRunning) return;
     if (keyboard) { keyboard.setEnabled(false); keyboard.detach(); keyboard = null; }
     if (touch) { touch.setEnabled(false); touch.dispose(); touch = null; }
+    if (cinematic) { cinematic.dispose(); cinematic = null; }
     if (fightCamera) { fightCamera.dispose(); fightCamera = null; }
     if (hud) { hud.destroy(); hud = null; }
     ctrlA = null;
@@ -498,7 +535,10 @@ export function createArena(container, opts = {}) {
       if (ctrlA && ctrlB) resolveSeparation(ctrlA, ctrlB);
       fighterA.animator.update(dt, t);
       fighterB.animator.update(dt, t);
-      if (fightCamera) fightCamera.update(dt);
+      // Cinematic intro owns the camera until it hands off; the fight
+      // camera takes over after that (never both in one frame).
+      if (cinematic && cinematic.getState() === 'playing') cinematic.update(dt);
+      else if (fightCamera) fightCamera.update(dt);
       // No controls.update() in fight mode — OrbitControls is disabled
       // and must not fight the camera lerp.
     } else if (!paused) {
