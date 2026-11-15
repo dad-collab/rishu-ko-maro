@@ -1,36 +1,39 @@
-# RISHU.COM — Phase 1
+# RISHU.COM — Phase 2
 
 Premium 3D browser-based fighting game. **Original branding, UI, characters and visuals only** — nothing copied from FightKaro or any other game.
 
-Phase 1 is the **foundation only**: main menu, game modes, character selection, How to Play, Settings, fullscreen, loading screen, and a real 3D arena preview (Three.js + WebGL). **Fighting gameplay is NOT in Phase 1** — it comes in Phase 2. The arena screen says this honestly; nothing is faked.
+**Phase 1** (done): main menu, game modes, character selection, How to Play, Settings, fullscreen, loading screen, and a real 3D arena preview (Three.js + WebGL).
 
-## What is in Phase 1
+**Phase 2** (this build): six original fighters with distinct procedural 3D models, a live rotatable 3D character preview, idle / walk / victory / selection animations, and a confirmed-pick flow that carries the selected fighter into the arena. **Fighting gameplay is NOT in Phase 2** — it comes in Phase 3. The arena screen says this honestly; nothing is faked.
 
-- **Main menu** — RISHU.COM logo (hand-made geometric-R SVG), Play Now, Game Modes, Character Selection entry, How to Play, Settings, Fullscreen. Every button works or is clearly marked Coming Soon.
-- **Game modes** — Player vs Computer, Two Player Local, Online Multiplayer (clearly marked **COMING SOON**, disabled).
-- **Character selection** — 4 original fighters: Rishu (Balanced Striker), Ayaan (Storm Fist), Kabir (Iron Wall), Zara (Shadow Step). Click to select, visible selected state, Confirm goes to the arena preview.
-- **3D arena** — octagonal ring, procedural canvas floor texture, corner posts + ropes, arena walls, professional lighting (key + fill + rim + overhead spots), shadows, cinematic auto-orbit camera, drag-to-orbit / scroll-to-zoom, two stylised preview fighters.
-- **Settings** — sound on/off + graphics quality (Low / Medium / High — actually changes pixel ratio and shadows), persisted in `localStorage`, with Reset.
-- **Fullscreen** — real Fullscreen API toggle.
-- **Loading screen** — progress bar tracks real init steps; error state if WebGL is unavailable (no infinite loading).
-- **Responsive** — desktop / laptop / tablet / mobile, no horizontal scrolling, touch-friendly (44px+ targets).
-- **Performance** — pixel ratio capped at 2, shadows only on Medium/High, rendering paused when the tab is hidden, minimal idle animation only.
+## What is in Phase 2
 
-## What is NOT in Phase 1 (honest list)
+- **Character selection screen** — large live 3D preview (real Three.js model, never a static image) beside a grid of six fighter cards. Drag the preview to rotate; Auto-rotate toggle; Walk Preview toggle.
+- **Six original fighters** — Rishu (Balanced Striker), Ayaan (Storm Fist), Kabir (Iron Wall), Zara (Shadow Step), **Dev (The Forge, new)**, **Meera (Storm Dancer, new)**. Each has a unique procedural low-poly model: different body proportions, outfit, hairstyle and accessories, plus its own colour combination.
+- **Stats** — Strength, Speed, Defense, Special Power (1–10 each) as animated visual bars on cards and in the preview detail panel.
+- **Animations** — idle (breathing / guard sway), walking (leg/arm swing + bob), victory pose (arms raised, plays on selection confirm), selection animation (full spin + scale pulse + glowing ring on switch). Procedural only, driven by `js/fighterAnimations.js`.
+- **Selection experience** — smooth switching with spin transitions, Select Fighter button, confirmed ✓ badge, selected-card highlight animation, Back and Continue buttons. Continue is enabled only after a valid confirmed pick.
+- **Game integration** — confirmed pick saved to `localStorage` (`rishu.selection.v1`) and pre-focused on the next visit; passed to the arena preview, which now shows the fighters' real Phase 2 models. CPU opponent is a random different fighter; Player 2 cannot pick the same fighter as Player 1 (Swap Pick works as in Phase 1). Fighter data shape (`stats + model builder + animation hooks`) is ready for combat — see the `PHASE 3 HOOK` comments in `js/fighterModels.js` and `js/fighterAnimations.js`.
+- **Preserved Phase 1** — homepage, branding, 3D arena, modes (PvC / 2P Local / Online Coming Soon), How to Play, Settings, fullscreen, loading screen — all still working.
+- **Responsive** — desktop / laptop / tablet / mobile, preview stacks above the cards on mobile, no horizontal scrolling, touch-friendly (44px+ targets).
+- **Performance** — preview renderer is created lazily and pauses when the character screen is not visible; pixel ratio capped at 2; shadows only on Medium/High.
 
-- Combat: punches, kicks, blocks, specials — Phase 2
-- Health bars, rounds, timer, win/lose — Phase 2
-- Keyboard / touch fight controls — Phase 2 (WASD is intentionally not active yet)
-- CPU AI — Phase 2
+## What is NOT in Phase 2 (honest list)
+
+- Combat: punches, kicks, blocks, specials — Phase 3
+- Health bars, rounds, timer, win/lose — Phase 3
+- Keyboard / touch fight controls — Phase 3 (WASD is intentionally not active yet)
+- CPU AI — Phase 3
 - Online Multiplayer — later phase, marked Coming Soon in the UI
+- No visual browser confirmation in this VM (no Chromium/Playwright) — open `http://localhost:8000` in a real browser to confirm the preview renders and the camera orbits.
 
 ## Tech
 
 Plain HTML / CSS / JS — no build step, no framework.
 
 - Three.js `0.160.0` via CDN ES modules (import map in `index.html`)
-- WebGL rendering, `OrbitControls` for the camera
-- Modular files: `js/main.js` (boot + loading), `js/arena.js` (Three.js scene), `js/menu.js` (screens/modals/settings), `js/characters.js` (fighter data)
+- WebGL rendering, `OrbitControls` for the arena camera
+- Modular files: `js/main.js` (boot + loading), `js/arena.js` (Three.js arena scene), `js/menu.js` (screens/modals/settings/character select), `js/characters.js` (fighter data + stats), `js/fighterModels.js` (procedural 3D models), `js/fighterAnimations.js` (animation state machine), `js/characterPreview.js` (live 3D preview renderer)
 
 ## Project structure
 
@@ -42,6 +45,9 @@ rishu-com/
   js/arena.js
   js/menu.js
   js/characters.js
+  js/fighterModels.js       # Phase 2 — procedural fighter models
+  js/fighterAnimations.js   # Phase 2 — idle / walk / victory / select
+  js/characterPreview.js    # Phase 2 — live 3D preview renderer
   assets/            # reserved for future art; logo is inline SVG (no external images)
   README.md
 ```
@@ -66,18 +72,17 @@ Needs an internet connection for the Three.js CDN on first load.
 
 ## Deploy
 
-### GitHub Pages (repo name: `RISHU`)
+### GitHub Pages (live: `dad-collab/rishu-ko-maro`)
 
-1. Create a GitHub repo named **RISHU** (do not push until the owner confirms).
-2. Push this folder to the repo's `main` branch.
-3. GitHub → repo → **Settings → Pages** → Source: **Deploy from a branch** → branch `main`, folder `/ (root)` → Save.
-4. Site will be live at `https://<username>.github.io/RISHU/` (replace `<username>` with the GitHub username).
+1. Push this folder to the repo's `main` branch.
+2. GitHub → repo → **Settings → Pages** → Source: **Deploy from a branch** → branch `main`, folder `/ (root)` → Save.
+3. Site is live at `https://dad-collab.github.io/rishu-ko-maro/`.
 
 ### Vercel (static)
 
-1. Import the `RISHU` repo in Vercel, or drag-and-drop this folder in the Vercel dashboard.
+1. Import the repo in Vercel, or drag-and-drop this folder in the Vercel dashboard.
 2. No build command, no framework preset — it is a static site; output directory is the project root.
-3. Deploy. No environment variables are needed in Phase 1.
+3. Deploy. No environment variables are needed.
 
 ## Colours
 

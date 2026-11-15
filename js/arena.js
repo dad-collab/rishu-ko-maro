@@ -1,11 +1,13 @@
-// RISHU.COM — Phase 1 — arena.js
+// RISHU.COM — Phase 2 — arena.js
 // Three.js fighting-arena scene. Preview only: two stylised fighter
-// figures stand in the ring; no combat runs in Phase 1.
+// figures stand in the ring; no combat runs in Phase 2.
 // Responsibilities: scene, lighting, shadows, floor texture, camera,
 // idle orbit, resize, visibility pause, quality switching.
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { buildFighterModel } from './fighterModels.js';
+import { createFighterAnimator } from './fighterAnimations.js';
 
 const QUALITY = {
   low: { pixelRatio: 1, shadows: false, antialias: false },
@@ -86,82 +88,8 @@ function makeFloorTexture() {
   return tex;
 }
 
-function buildFighter(colorHex, colorDarkHex, facingAngle) {
-  // Simple stylised low-poly fighter — original geometry, no copied model.
-  const group = new THREE.Group();
-  const skin = new THREE.MeshStandardMaterial({ color: 0x8a6a52, roughness: 0.7 });
-  const shirt = new THREE.MeshStandardMaterial({ color: new THREE.Color(colorHex), roughness: 0.6 });
-  const shorts = new THREE.MeshStandardMaterial({ color: new THREE.Color(colorDarkHex), roughness: 0.6 });
-  const glove = new THREE.MeshStandardMaterial({ color: 0x1c1f26, roughness: 0.45 });
-  const shoe = new THREE.MeshStandardMaterial({ color: 0x0a0a0c, roughness: 0.5 });
-
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.78, 0.36), shirt);
-  torso.position.y = 1.32;
-  torso.castShadow = true;
-  group.add(torso);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 24, 18), skin);
-  head.position.y = 1.98;
-  head.castShadow = true;
-  group.add(head);
-
-  // Headband in fighter colour
-  const band = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.035, 8, 24), shirt);
-  band.position.y = 2.05;
-  band.rotation.x = Math.PI / 2;
-  group.add(band);
-
-  // Arms — guard position (forearms raised)
-  const armGeo = new THREE.CylinderGeometry(0.09, 0.08, 0.62, 10);
-  const leftArm = new THREE.Mesh(armGeo, skin);
-  leftArm.position.set(-0.42, 1.45, 0.14);
-  leftArm.rotation.set(-0.9, 0, 0.35);
-  leftArm.castShadow = true;
-  group.add(leftArm);
-  const rightArm = new THREE.Mesh(armGeo, skin);
-  rightArm.position.set(0.42, 1.45, 0.14);
-  rightArm.rotation.set(-0.9, 0, -0.35);
-  rightArm.castShadow = true;
-  group.add(rightArm);
-
-  const gloveGeo = new THREE.SphereGeometry(0.15, 14, 12);
-  const leftGlove = new THREE.Mesh(gloveGeo, glove);
-  leftGlove.position.set(-0.34, 1.68, 0.38);
-  leftGlove.castShadow = true;
-  group.add(leftGlove);
-  const rightGlove = new THREE.Mesh(gloveGeo, glove);
-  rightGlove.position.set(0.34, 1.68, 0.38);
-  rightGlove.castShadow = true;
-  group.add(rightGlove);
-
-  // Shorts + legs
-  const hips = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.32, 0.36), shorts);
-  hips.position.y = 0.82;
-  hips.castShadow = true;
-  group.add(hips);
-
-  const legGeo = new THREE.CylinderGeometry(0.11, 0.09, 0.72, 10);
-  const leftLeg = new THREE.Mesh(legGeo, skin);
-  leftLeg.position.set(-0.18, 0.36, 0);
-  leftLeg.castShadow = true;
-  group.add(leftLeg);
-  const rightLeg = new THREE.Mesh(legGeo, skin);
-  rightLeg.position.set(0.18, 0.36, 0);
-  rightLeg.castShadow = true;
-  group.add(rightLeg);
-
-  const shoeGeo = new THREE.BoxGeometry(0.2, 0.1, 0.34);
-  const leftShoe = new THREE.Mesh(shoeGeo, shoe);
-  leftShoe.position.set(-0.18, 0.05, 0.05);
-  group.add(leftShoe);
-  const rightShoe = new THREE.Mesh(shoeGeo, shoe);
-  rightShoe.position.set(0.18, 0.05, 0.05);
-  group.add(rightShoe);
-
-  group.rotation.y = facingAngle;
-  group.userData.baseY = 0;
-  return group;
-}
+// Fighter models live in fighterModels.js (Phase 2) — one procedural
+// low-poly model per fighter, with the animator in fighterAnimations.js.
 
 export function createArena(container, opts = {}) {
   const onProgress = opts.onProgress || (() => {});
@@ -342,13 +270,20 @@ export function createArena(container, opts = {}) {
     scene.add(strip);
   }
 
-  // ---- Fighters (preview stands) ----
-  let fighterA = buildFighter('#4F7DF3', '#2E4FA8', Math.PI / 2);
-  fighterA.position.set(-1.6, 0.56, 0);
-  scene.add(fighterA);
-  let fighterB = buildFighter('#E8E8EC', '#8A8F9E', -Math.PI / 2);
-  fighterB.position.set(1.6, 0.56, 0);
-  scene.add(fighterB);
+  // ---- Fighters (Phase 2 models, idle animation) ----
+  // Default pair matches the original defaults (Rishu vs Ayaan) until
+  // setFighters() is called with the player's selection.
+  const DEFAULT_A = { id: 'rishu', color: '#4F7DF3', colorDark: '#2E4FA8', model: { build: 'average', height: 1, hair: 'spiky', outfit: 'vest', accessory: 'headband' }, skin: 0x8a6a52 };
+  const DEFAULT_B = { id: 'ayaan', color: '#E8E8EC', colorDark: '#8A8F9E', model: { build: 'broad', height: 1.02, hair: 'mohawk', outfit: 'hoodie', accessory: 'wristbands' }, skin: 0x6b4a35 };
+  function placeFighter(char, x, facing) {
+    const m = buildFighterModel(char);
+    m.group.position.set(x, 0.56, 0);
+    m.group.rotation.y = facing;
+    scene.add(m.group);
+    return { model: m, animator: createFighterAnimator(m, { initial: 'idle' }), baseRot: facing };
+  }
+  let fighterA = placeFighter(DEFAULT_A, -1.6, Math.PI / 2);
+  let fighterB = placeFighter(DEFAULT_B, 1.6, -Math.PI / 2);
 
   onProgress(92, 'Setting the camera…');
   // ---- Controls: drag to orbit, scroll to zoom ----
@@ -377,12 +312,14 @@ export function createArena(container, opts = {}) {
     if (disposed) return;
     raf = requestAnimationFrame(tick);
     if (!running || document.hidden) return;
+    const dt = Math.min(0.05, clock.getDelta());
     const t = clock.getElapsedTime();
-    // Minimal idle motion only: gentle breathing / guard sway
-    fighterA.position.y = 0.56 + Math.sin(t * 1.6) * 0.015;
-    fighterB.position.y = 0.56 + Math.sin(t * 1.6 + 1.2) * 0.015;
-    fighterA.rotation.y = Math.PI / 2 + Math.sin(t * 0.5) * 0.06;
-    fighterB.rotation.y = -Math.PI / 2 + Math.sin(t * 0.5 + 0.8) * 0.06;
+    // Idle animation (breathing / guard sway) from the animator.
+    // A slow facing sway keeps the pair reading as alive, not statues.
+    fighterA.animator.update(dt, t);
+    fighterB.animator.update(dt, t);
+    fighterA.model.group.rotation.y = fighterA.baseRot + Math.sin(t * 0.5) * 0.06;
+    fighterB.model.group.rotation.y = fighterB.baseRot + Math.sin(t * 0.5 + 0.8) * 0.06;
     controls.update();
     renderer.render(scene, camera);
   }
@@ -419,15 +356,12 @@ export function createArena(container, opts = {}) {
       onResize();
     },
     setFighters(charA, charB) {
-      // Replace preview figures with the selected characters' colours
-      scene.remove(fighterA);
-      scene.remove(fighterB);
-      fighterA = buildFighter(charA.color, charA.colorDark, Math.PI / 2);
-      fighterA.position.set(-1.6, 0.56, 0);
-      scene.add(fighterA);
-      fighterB = buildFighter(charB.color, charB.colorDark, -Math.PI / 2);
-      fighterB.position.set(1.6, 0.56, 0);
-      scene.add(fighterB);
+      // Replace preview figures with the selected characters' real
+      // Phase 2 models (distinct silhouette, outfit, hairstyle).
+      scene.remove(fighterA.model.group);
+      scene.remove(fighterB.model.group);
+      fighterA = placeFighter(charA, -1.6, Math.PI / 2);
+      fighterB = placeFighter(charB, 1.6, -Math.PI / 2);
     },
     resize: onResize,
     dispose() {

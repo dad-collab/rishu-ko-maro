@@ -1,11 +1,17 @@
-// RISHU.COM — Phase 1 — menu.js
+// RISHU.COM — Phase 2 — menu.js
 // Screen router + menu / modes / character-select / modals logic.
+// Phase 2 character select: a large live 3D preview (characterPreview.js)
+// beside a grid of six fighter cards. Tap a card to preview that fighter;
+// "Select Fighter" confirms the pick (victory pose + confirmed badge);
+// "Continue" enters the arena preview with the confirmed fighters.
 // No fake buttons: every action below either navigates, opens a real
 // modal, changes a real setting, or is explicitly labelled Coming Soon.
 
-import { CHARACTERS, getCharacter } from './characters.js';
+import { CHARACTERS, getCharacter, STAT_DEFS } from './characters.js';
+import { createCharacterPreview } from './characterPreview.js';
 
 const SETTINGS_KEY = 'rishu.settings.v1';
+const SELECTION_KEY = 'rishu.selection.v1';
 
 export function loadSettings() {
   try {
@@ -17,6 +23,18 @@ export function loadSettings() {
 
 export function saveSettings(s) {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch (e) { /* ignore */ }
+}
+
+function loadSelection() {
+  try {
+    const raw = localStorage.getItem(SELECTION_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) { /* ignore */ }
+  return null;
+}
+
+function saveSelection(sel) {
+  try { localStorage.setItem(SELECTION_KEY, JSON.stringify({ ...sel, at: Date.now() })); } catch (e) { /* ignore */ }
 }
 
 export function initMenu(api) {
@@ -31,9 +49,13 @@ export function initMenu(api) {
   };
   let currentScreen = 'menu';
   let selectedMode = null; // 'pvc' | '2p'
-  let p1 = null; // character id
-  let p2 = null; // character id
-  let pickingFor = 'p1'; // in 2P mode, which slot is being picked
+  let p1 = null; // confirmed character id
+  let p2 = null; // confirmed character id
+  let pickingFor = 'p1'; // in 2P mode, which slot is being confirmed
+  let focused = null; // character id currently shown in the 3D preview
+  let preview = null; // characterPreview instance (lazy)
+  let previewWalk = false;
+  let confirming = false; // guards the victory->arena transition
 
   function show(name) {
     Object.entries(screens).forEach(([key, el]) => {
@@ -43,6 +65,7 @@ export function initMenu(api) {
     window.scrollTo({ top: 0 });
     // Arena canvas only needs a resize when its screen becomes visible
     if (name === 'arena' && api.onArenaShown) api.onArenaShown();
+    if (name === 'characters' && preview) preview.resize();
   }
 
   function showToast(msg) {
@@ -54,37 +77,92 @@ export function initMenu(api) {
     t._timer = setTimeout(() => t.classList.remove('show'), 2600);
   }
 
-  // ---------- Character grid ----------
+  // ---------- 3D preview ----------
+  function ensurePreview() {
+    if (preview) return preview;
+    const wrap = $('preview-wrap');
+    if (!wrap) return null;
+    try {
+      preview = createCharacterPreview(wrap, {
+        quality: api.settings.quality,
+        isVisible: () => currentScreen === 'characters',
+      });
+    } catch (e) {
+      console.error('[RISHU] Character preview failed to start:', e);
+      preview = null;
+    }
+    if (!preview) {
+      // Honest fallback: cards still work, preview area explains why.
+      wrap.innerHTML = '<p class="preview-fallback">3D preview is unavailable in this browser (WebGL needed). Character cards below still work — tap one, then Select Fighter.</p>';
+    }
+    return preview;
+  }
+
+  function focusCharacter(id, animate = true) {
+    const c = getCharacter(id);
+    if (!c) return;
+    focused = id;
+    if (preview) {
+      preview.setFighter(c, animate);
+      if (previewWalk) preview.setAnimation('walk');
+    }
+    renderDetail(c);
+    renderGrid();
+    updatePickUI();
+  }
+
+  function renderDetail(c) {
+    const set = (id, text) => { const el = $(id); if (el) el.textContent = text; };
+    set('preview-name', c.name);
+    set('preview-tagline', `${c.title} · ${c.style}`);
+    set('preview-personality', c.personality);
+    set('preview-special', c.specialMove);
+    const statsEl = $('preview-stats');
+    if (statsEl) {
+      statsEl.innerHTML = STAT_DEFS.map((d) => `
+        <div class="stat-row">
+          <span>${d.label}</span>
+          <span class="stat-bar" role="img" aria-label="${d.label} ${c[d.key]} out of 10"><i style="width:${c[d.key] * 10}%"></i></span>
+          <b>${c[d.key]}</b>
+        </div>`).join('');
+    }
+    const badge = $('preview-badge');
+    if (badge) {
+      const confirmed = (selectedMode === '2p' && pickingFor === 'p1' && p1 === c.id)
+        || (selectedMode === '2p' && pickingFor === 'p2' && p2 === c.id)
+        || (selectedMode !== '2p' && p1 === c.id);
+      badge.hidden = !confirmed;
+    }
+  }
+
+  // ---------- Character grid (compact cards) ----------
   const grid = $('char-grid');
   function statRow(label, value) {
-    const filled = '■'.repeat(value);
-    const empty = '□'.repeat(10 - value);
-    return `<div class="stat-row"><span>${label}</span><span class="stat-bar" aria-label="${label} ${value} out of 10">${filled}${empty}</span><b>${value}</b></div>`;
+    return `<div class="stat-row"><span>${label}</span><span class="stat-bar" role="img" aria-label="${label} ${value} out of 10"><i style="width:${value * 10}%"></i></span><b>${value}</b></div>`;
   }
   function renderGrid() {
     if (!grid) return;
     grid.innerHTML = CHARACTERS.map((c) => {
       const isP1 = p1 === c.id;
       const isP2 = p2 === c.id;
+      const isFocused = focused === c.id;
       const tag = isP1 && isP2 ? 'P1 · P2' : isP1 ? 'P1' : isP2 ? 'P2' : '';
+      const taken = selectedMode === '2p' && pickingFor === 'p2' && p1 === c.id;
       return `
-      <button class="char-card ${isP1 || isP2 ? 'selected' : ''}" data-char="${c.id}" aria-pressed="${isP1 || isP2}">
+      <button class="char-card ${isFocused ? 'focused' : ''} ${isP1 || isP2 ? 'selected' : ''} ${taken ? 'taken' : ''}" data-char="${c.id}" aria-pressed="${isP1 || isP2}" ${taken ? 'disabled' : ''}>
         <span class="char-avatar" style="--c:${c.color};--cd:${c.colorDark}">${c.initials}</span>
         ${tag ? `<span class="char-tag">${tag}</span>` : ''}
+        ${isFocused ? '<span class="char-focus">▶ Previewing</span>' : ''}
         <span class="char-name">${c.name}</span>
         <span class="char-title">${c.title} · ${c.style}</span>
-        <span class="char-desc">${c.description}</span>
         <span class="char-stats">
-          ${statRow('Power', c.power)}
-          ${statRow('Speed', c.speed)}
-          ${statRow('Defense', c.defense)}
-          ${statRow('Range', c.range)}
+          ${STAT_DEFS.map((d) => statRow(d.label, c[d.key])).join('')}
         </span>
-        <span class="char-diff">Difficulty: ${c.difficulty}</span>
+        <span class="char-diff">Difficulty: ${c.difficulty} · Special: ${c.specialMove}</span>
       </button>`;
     }).join('');
     grid.querySelectorAll('.char-card').forEach((card) => {
-      card.addEventListener('click', () => selectCharacter(card.dataset.char));
+      card.addEventListener('click', () => focusCharacter(card.dataset.char));
     });
     updatePickUI();
   }
@@ -92,26 +170,32 @@ export function initMenu(api) {
   function updatePickUI() {
     const hint = $('pick-hint');
     const confirmBtn = $('btn-confirm-fighters');
+    const selectBtn = $('btn-select-fighter');
     if (selectedMode === '2p') {
       const p1c = p1 ? getCharacter(p1) : null;
       const p2c = p2 ? getCharacter(p2) : null;
       if (hint) {
         hint.textContent = pickingFor === 'p1'
-          ? `Picking Player 1${p1c ? ` — ${p1c.name} picked` : ''}. Tap a fighter for P1, then P2.`
-          : `Player 1: ${p1c ? p1c.name : '—'} · Now picking Player 2${p2c ? ` — ${p2c.name} picked` : ''}.`;
+          ? `Confirming Player 1${p1c ? ` — ${p1c.name} confirmed` : ''}. Preview a fighter, then press Select Fighter.`
+          : `Player 1: ${p1c ? p1c.name : '—'} · Now confirming Player 2${p2c ? ` — ${p2c.name} confirmed` : ''}.`;
       }
       if (confirmBtn) {
-        confirmBtn.disabled = !(p1 && p2);
-        confirmBtn.textContent = (p1 && p2) ? 'Enter Arena Preview →' : 'Pick Both Fighters to Continue';
+        confirmBtn.disabled = !(p1 && p2) || confirming;
+        confirmBtn.textContent = (p1 && p2) ? 'Continue to Arena →' : 'Confirm Both Fighters to Continue';
       }
     } else {
       const p1c = p1 ? getCharacter(p1) : null;
       const cpu = p2 ? getCharacter(p2) : null;
-      if (hint) hint.textContent = p1c ? `${p1c.name} selected. CPU opponent: ${cpu ? cpu.name : 'random — picked on confirm'}.` : 'Tap a fighter to select your challenger.';
+      if (hint) hint.textContent = p1c ? `${p1c.name} confirmed. CPU opponent: ${cpu ? cpu.name : 'random — picked on Continue'}.` : 'Preview a fighter, then press Select Fighter to confirm your pick.';
       if (confirmBtn) {
-        confirmBtn.disabled = !p1;
-        confirmBtn.textContent = p1 ? 'Enter Arena Preview →' : 'Pick a Fighter to Continue';
+        confirmBtn.disabled = !p1 || confirming;
+        confirmBtn.textContent = p1 ? 'Continue to Arena →' : 'Select a Fighter to Continue';
       }
+    }
+    if (selectBtn) {
+      const fc = focused ? getCharacter(focused) : null;
+      selectBtn.disabled = !fc || confirming;
+      selectBtn.textContent = fc ? `Select ${fc.name}` : 'Select Fighter';
     }
     const p1Label = $('slot-p1');
     const p2Label = $('slot-p2');
@@ -123,23 +207,35 @@ export function initMenu(api) {
     if (swapBtn) swapBtn.style.display = selectedMode === '2p' ? '' : 'none';
   }
 
-  function selectCharacter(id) {
+  // Confirm the currently previewed fighter for the active slot.
+  // Plays the victory pose + glow in the preview, then locks the pick.
+  function selectFocusedFighter() {
+    if (!focused || confirming) return;
+    const c = getCharacter(focused);
+    if (!c) return;
     if (selectedMode === '2p') {
       if (pickingFor === 'p1') {
-        p1 = id;
-        if (p2 === id) p2 = null; // same fighter cannot be both
+        p1 = focused;
+        if (p2 === focused) p2 = null; // same fighter cannot be both
         pickingFor = 'p2';
       } else {
-        if (id === p1) { showToast('P2 needs a different fighter than P1.'); return; }
-        p2 = id;
-        pickingFor = 'p1'; // allow re-picking either after both are set
+        if (focused === p1) { showToast('P2 needs a different fighter than P1.'); return; }
+        p2 = focused;
+        pickingFor = 'p1'; // allow re-confirming either after both are set
       }
     } else {
-      p1 = id;
+      p1 = focused;
       // CPU opponent: pick a different fighter at random
-      const others = CHARACTERS.filter((c) => c.id !== id);
+      const others = CHARACTERS.filter((x) => x.id !== focused);
       p2 = others[Math.floor(Math.random() * others.length)].id;
     }
+    if (preview) {
+      preview.setAnimation('victory');
+      preview.pulseGlow();
+      setTimeout(() => { if (preview) preview.setAnimation(previewWalk ? 'walk' : 'idle'); }, 1400);
+    }
+    showToast(`${c.name} confirmed${selectedMode === '2p' ? ` for ${pickingFor === 'p2' ? 'Player 1' : 'Player 2'}` : ''}!`);
+    renderDetail(c);
     renderGrid();
   }
 
@@ -148,29 +244,52 @@ export function initMenu(api) {
     p1 = null;
     p2 = null;
     pickingFor = 'p1';
+    confirming = false;
     const title = $('char-title');
     const sub = $('char-sub');
     if (title) title.textContent = mode === '2p' ? 'Choose Your Fighters' : 'Choose Your Fighter';
     if (sub) sub.textContent = mode === '2p'
-      ? 'Player 1 picks first, then Player 2. Same fighter cannot be picked twice.'
+      ? 'Player 1 confirms first, then Player 2. Same fighter cannot be picked twice.'
       : 'Your CPU opponent is picked at random from the remaining fighters.';
-    renderGrid();
+    ensurePreview();
+    // Pre-focus the last confirmed fighter (PvC) so returning players
+    // land on their fighter instead of starting over.
+    const saved = loadSelection();
+    const startId = (mode !== '2p' && saved && saved.p1 && getCharacter(saved.p1))
+      ? saved.p1
+      : CHARACTERS[0].id;
     show('characters');
+    focusCharacter(startId, false);
   }
 
   function confirmFighters() {
+    if (confirming) return;
     if (selectedMode === '2p' && !(p1 && p2)) return;
     if (selectedMode !== '2p' && !p1) return;
+    // CPU opponent in PvC is re-rolled on Continue if it was never set.
+    if (selectedMode !== '2p' && !p2) {
+      const others = CHARACTERS.filter((x) => x.id !== p1);
+      p2 = others[Math.floor(Math.random() * others.length)].id;
+    }
     const a = getCharacter(p1);
     const b = getCharacter(p2);
-    const label = $('arena-fight-label');
-    if (label) {
-      label.textContent = selectedMode === '2p'
-        ? `${a.name}  vs  ${b.name}  ·  Two Player Local`
-        : `${a.name}  vs  ${b.name} (CPU)  ·  Player vs Computer`;
-    }
-    if (api.onEnterArena) api.onEnterArena(selectedMode, a, b);
-    show('arena');
+    saveSelection({ mode: selectedMode, p1, p2 });
+    // Victory pose in the preview, then step into the arena.
+    confirming = true;
+    updatePickUI();
+    if (preview) preview.setAnimation('victory');
+    setTimeout(() => {
+      confirming = false;
+      const label = $('arena-fight-label');
+      if (label) {
+        label.textContent = selectedMode === '2p'
+          ? `${a.name}  vs  ${b.name}  ·  Two Player Local`
+          : `${a.name}  vs  ${b.name} (CPU)  ·  Player vs Computer`;
+      }
+      if (api.onEnterArena) api.onEnterArena(selectedMode, a, b);
+      show('arena');
+      updatePickUI();
+    }, 650);
   }
 
   // ---------- Navigation wiring ----------
@@ -195,6 +314,23 @@ export function initMenu(api) {
   // so it can never act like a working button.
 
   bind('btn-confirm-fighters', confirmFighters);
+  bind('btn-select-fighter', selectFocusedFighter);
+
+  // Preview controls — all real actions on the live 3D preview.
+  bind('btn-preview-rotate', () => {
+    if (!preview) return;
+    const on = !preview.getAutoRotate();
+    preview.setAutoRotate(on);
+    const btn = $('btn-preview-rotate');
+    if (btn) btn.textContent = on ? '⟳ Auto-rotate: On' : '⟳ Auto-rotate: Off';
+  });
+  bind('btn-preview-walk', () => {
+    if (!preview) return;
+    previewWalk = !previewWalk;
+    preview.setAnimation(previewWalk ? 'walk' : 'idle');
+    const btn = $('btn-preview-walk');
+    if (btn) btn.textContent = previewWalk ? '🚶 Walking — tap to stop' : '🚶 Walk Preview';
+  });
 
   // Swap P1/P2 pick order in 2P mode (small, real utility)
   bind('btn-swap-pick', () => {
@@ -231,7 +367,7 @@ export function initMenu(api) {
     soundToggle.addEventListener('change', () => {
       settings.sound = soundToggle.checked;
       saveSettings(settings);
-      showToast(settings.sound ? 'Sound on.' : 'Sound off. (No audio in Phase 1 preview.)');
+      showToast(settings.sound ? 'Sound on.' : 'Sound off. (No audio in Phase 2 preview.)');
     });
   }
   if (qualitySelect) {
@@ -240,6 +376,7 @@ export function initMenu(api) {
       settings.quality = qualitySelect.value;
       saveSettings(settings);
       if (api.onQualityChange) api.onQualityChange(settings.quality);
+      if (preview) preview.setQuality(settings.quality);
       showToast(`Quality set to ${settings.quality}.`);
     });
   }
@@ -250,6 +387,7 @@ export function initMenu(api) {
     if (soundToggle) soundToggle.checked = true;
     if (qualitySelect) qualitySelect.value = 'high';
     if (api.onQualityChange) api.onQualityChange('high');
+    if (preview) preview.setQuality('high');
     showToast('Settings reset to defaults.');
   });
 
@@ -258,6 +396,10 @@ export function initMenu(api) {
   bind('btn-how-footer', () => openModal('modal-how'));
   bind('btn-phase2', () => openModal('modal-phase2'));
 
+  // Initial render (menu screen); the preview is created lazily on
+  // first open so the menu stays fast.
+  focused = CHARACTERS[0].id;
+  renderDetail(CHARACTERS[0]);
   renderGrid();
   return { show, showToast, openCharacterSelect };
 }
