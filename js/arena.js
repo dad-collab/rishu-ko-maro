@@ -299,6 +299,22 @@ export function createArena(container, opts = {}) {
   let fighterA = placeFighter(DEFAULT_A, -1.6, Math.PI / 2);
   let fighterB = placeFighter(DEFAULT_B, 1.6, -Math.PI / 2);
 
+  // Closure-level setFighters: startMatch() calls this directly.
+  // (It used to exist ONLY as a method on the returned API object, so
+  // the bare call inside startMatch threw ReferenceError and the
+  // "Continue to Arena" button died disabled — the arena never opened.)
+  function setFighters(charA, charB) {
+    // Replace preview figures with the selected characters' real
+    // Phase 2 models (distinct silhouette, outfit, hairstyle).
+    // Preview-only path: startMatch() calls this, then binds the
+    // movement controllers to the new models. Do not call it during
+    // a match — it would orphan the controllers.
+    scene.remove(fighterA.model.group);
+    scene.remove(fighterB.model.group);
+    fighterA = placeFighter(charA, -1.6, Math.PI / 2);
+    fighterB = placeFighter(charB, 1.6, -Math.PI / 2);
+  }
+
   onProgress(92, 'Setting the camera…');
   // ---- Controls: drag to orbit, scroll to zoom ----
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -526,17 +542,7 @@ export function createArena(container, opts = {}) {
       });
       onResize();
     },
-    setFighters(charA, charB) {
-      // Replace preview figures with the selected characters' real
-      // Phase 2 models (distinct silhouette, outfit, hairstyle).
-      // Preview-only path: startMatch() calls this, then binds the
-      // movement controllers to the new models. Do not call it during
-      // a match — it would orphan the controllers.
-      scene.remove(fighterA.model.group);
-      scene.remove(fighterB.model.group);
-      fighterA = placeFighter(charA, -1.6, Math.PI / 2);
-      fighterB = placeFighter(charB, 1.6, -Math.PI / 2);
-    },
+    setFighters, // delegates to the closure-level setFighters above
     startMatch,
     beginMatch,
     ensureMatch,

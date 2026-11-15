@@ -374,12 +374,19 @@ export function initMenu(api) {
     if (preview) preview.setAnimation('victory');
     setTimeout(() => {
       confirming = false;
-      const label = $('arena-fight-label');
-      if (label) {
-        label.innerHTML = `${a.name} <span class="vs">VS</span> ${b.name} <span class="fight-meta">· ${selectedMode === '2p' ? 'Two Player Local' : 'Player vs Computer'}</span>`;
+      try {
+        const label = $('arena-fight-label');
+        if (label) {
+          label.innerHTML = `${a.name} <span class="vs">VS</span> ${b.name} <span class="fight-meta">· ${selectedMode === '2p' ? 'Two Player Local' : 'Player vs Computer'}</span>`;
+        }
+        if (api.onEnterArena) api.onEnterArena(selectedMode, a, b);
+        show('arena');
+      } catch (e) {
+        // Never strand the user on a dead disabled button: if the arena
+        // fails to start, re-enable Continue and say so honestly.
+        console.error('[RISHU] Could not enter the arena:', e);
+        showToast('Arena could not start — please try Continue again.');
       }
-      if (api.onEnterArena) api.onEnterArena(selectedMode, a, b);
-      show('arena');
       updatePickUI();
     }, 650);
   }
