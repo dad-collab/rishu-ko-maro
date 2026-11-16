@@ -41,10 +41,16 @@
 //   gracefully to fixed-axis movement: D = screen-right / advance,
 //   A = screen-left / retreat, W/S = sidestep in depth. No movement.js
 //   change is needed (verified in TEKKEN-CAMERA-AUDIT.md §5).
-// - No shake, no drag, no pinch, no zoom, no tracking: this module has
-//   no update() at all. Phase 4's shake (the old fight camera's trauma
-//   wobble + the one arena.js call site) is deleted with those files,
-//   not worked around.
+// - Heavy-hit shake (user decision 2026-11-16 ~12:54 IST): SUBTLE, heavy
+//   hits only. addShake(amount) takes the peak horizontal offset in
+//   metres (0.05 heavyPunch, 0.08 heavyKick, from the combat table);
+//   the visible offset is trauma^2 x [0.08 m horizontal, 0.02 m
+//   vertical] at 12 Hz, decaying linearly to exactly 0 in <= 0.35 s.
+//   Position is recomputed from FIXED_POSE every frame (never
+//   integrated), so the camera returns to the EXACT pose — zero drift.
+//   Position only: no lookAt/rotation, so getForward() stays (0, 0, -1).
+//   No shake on light attacks, movement, jumps, blocks, dodges, idle,
+//   or while paused. No drag, no pinch, no zoom, no tracking.
 // - MOBILE (update 16:05 IST — user requirement): fights run in
 //   LANDSCAPE on phones (rotate prompt gates arena entry); portrait
 //   is not a fight orientation. The 17% portrait figure from the
@@ -93,6 +99,24 @@ export function createFixedCamera() {
   const _forward = new THREE.Vector3(0, 0, -1);
   let active = false;
 
+  // Heavy-hit shake (user decision 12:54 IST) — SUBTLE, heavy hits only.
+  // addShake(amount): amount = PEAK HORIZONTAL OFFSET IN METRES, clamped
+  // [0, SHAKE_MAX_AMP]. Trauma is the normalized envelope (amount / 0.08);
+  // the visible offset is trauma^2 x [0.08 m horizontal, 0.02 m vertical]
+  // at 12 Hz, decaying linearly to exactly 0 in <= 0.35 s. Position is
+  // RECOMPUTED from FIXED_POSE every frame (never integrated), so the
+  // camera returns to the EXACT pose — zero drift by construction.
+  // Position only: no lookAt/target/rotation, so getForward() stays
+  // (0, 0, -1) and movement is untouched.
+  const SHAKE_MAX_AMP = 0.08;    // m, horizontal peak (Phase 4 bound, AUDIT §3.2)
+  const SHAKE_VERT_RATIO = 0.25; // vertical peak = 0.25 x horizontal (<= 0.02 m)
+  const SHAKE_FREQ = 12;         // Hz
+  const SHAKE_DECAY = 0.35;      // s, linear trauma -> 0
+  let trauma = 0;                // 0..1, normalized envelope
+  let shakeT = 0;                // s since shake (re)start
+  let _base = null;              // THREE.Vector3, set in engage()
+  let _right = null, _up = null; // cached screen-aligned unit vectors
+
   function applyFrustum(aspect) {
     const h = computeHalfHeight(aspect);
     camera.left = -h * aspect;
@@ -116,16 +140,52 @@ export function createFixedCamera() {
       camera.lookAt(_target);
       applyFrustum(aspect);
       active = true;
+      // Heavy-hit shake: fresh state per match; the axes are
+      // screen-aligned by construction (taken from the camera matrix
+      // after lookAt, not hand-derived).
+      trauma = 0; shakeT = 0;
+      _base = camera.position.clone();
+      camera.updateMatrixWorld(true);
+      _right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+      _up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).normalize();
     },
     // Resize only re-sizes the frustum. Position/rotation are untouched.
     resize(aspect) {
       if (active) applyFrustum(aspect);
     },
     disengage() {
+      // A mid-shake stop leaves the exact pose behind.
+      trauma = 0; shakeT = 0;
+      if (_base) camera.position.copy(_base);
       active = false;
     },
     dispose() {
       active = false;
     },
+    // Heavy-hit shake: amount = peak horizontal offset in METRES
+    // (0.05 heavyPunch, 0.08 heavyKick from the combat table). A bigger
+    // hit restarts the phase; a smaller hit never shrinks the running
+    // shake. No-op when the camera is not engaged.
+    addShake(amount) {
+      if (!active) return;
+      const a = Math.min(Math.max(amount || 0, 0), SHAKE_MAX_AMP);
+      const t = a / SHAKE_MAX_AMP;
+      if (t > trauma) { trauma = t; shakeT = 0; }
+    },
+    // Advances the shake by dt (sim seconds). Position is recomputed
+    // from the fixed pose every frame; when trauma reaches 0 the offset
+    // is exactly 0, so the position is bit-identical to FIXED_POSE.
+    // No-op when inactive or when trauma is 0.
+    update(dt) {
+      if (!active || trauma <= 0) return;
+      shakeT += dt;
+      trauma = Math.max(0, trauma - dt / SHAKE_DECAY);
+      const env = trauma * trauma;
+      const w = 2 * Math.PI * SHAKE_FREQ * shakeT;
+      const ox = env * SHAKE_MAX_AMP * Math.sin(w);
+      const oy = env * SHAKE_MAX_AMP * SHAKE_VERT_RATIO * Math.sin(w + Math.PI / 2);
+      camera.position.copy(_base).addScaledVector(_right, ox).addScaledVector(_up, oy);
+    },
+    getTrauma: () => trauma,
   };
 }

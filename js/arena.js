@@ -633,11 +633,13 @@ export function createArena(container, opts = {}) {
         }
         if (heavy && stadium) stadium.setExcitement(0.6);
         const def = ATTACKS[ev.attack];
-        // No camera shake: the fixed camera never moves (the shake call
-        // site died with the old fight-camera module; the shake: values
-        // in the attack table are inert data now).
+        // Heavy-hit shake (user decision 12:54 IST): subtle, heavy hits
+        // only. def.shake is the peak horizontal offset in METRES
+        // (0.05 heavyPunch, 0.08 heavyKick); light attacks and kicks
+        // carry shake: 0, so this guard selects exactly the two heavies.
         if (def && def.shake > 0) {
           hitstop = ev.attack === 'heavyKick' ? DEFENSE.HITSTOP_HEAVY_KICK : DEFENSE.HITSTOP_HEAVY;
+          if (fixedCamera) fixedCamera.addShake(def.shake);
         }
         if (ev.ko) onKo(attackerId);
         break;
@@ -1028,6 +1030,11 @@ export function createArena(container, opts = {}) {
       if (effects) effects.update(dt);
     }
     // While paused the frame is frozen (no sim, no camera) but still rendered.
+    // Heavy-hit shake: advances only while the sim is NOT paused (user
+    // pause and rotate pause freeze the frame, shake included). Runs in
+    // the live match, through hitstop, and through the KO freeze so the
+    // KO-blow shake settles to the exact pose. No-op when trauma is 0.
+    if (fixedCamera && !paused) fixedCamera.update(dt);
     renderer.render(scene, renderCamera);
   }
   tick();
