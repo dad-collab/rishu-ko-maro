@@ -364,7 +364,7 @@
           <span class="tick br" aria-hidden="true"></span>
           <div id="arena-wrap"></div>
         </div>
-        <p class="arena-caption">WASD move · Space jump · Shift run · J light punch · K heavy punch · U kick · I heavy kick · L block (L+S low guard) · O dodge · P2: arrows + Numpad 1/2/3/0, Numpad Enter block, Numpad 5 dodge · Drag to adjust the camera · Touch: left joystick + JUMP + combat buttons</p>
+        <p class="arena-caption">WASD move · Space jump · Shift run · J light punch · K heavy punch · U kick · I heavy kick · L block (L+S low guard) · O dodge · P2: arrows + Numpad 1/2/3/0, Numpad Enter block, Numpad 5 dodge · Touch: left joystick + JUMP + combat buttons</p>
         <div class="arena-actions">
           <button class="btn" id="btn-modes" type="button">Game Modes</button>
           <button class="text-link" id="btn-phase2" type="button">What’s next?</button>
@@ -410,13 +410,13 @@
         <li><b>Player 2 (Two Player Local):</b> <kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> move · <kbd>Right Shift</kbd> jump · <kbd>Enter</kbd> run.</li>
         <li><b>Touch:</b> left joystick to move (push to the edge to run) · <b>JUMP</b> button on the right. The joystick drives Player 1 only.</li>
         <li><b>Pause:</b> <kbd>P</kbd> or <kbd>Esc</kbd>, or the Pause button in the match bar.</li>
-        <li>Your fighter always faces the opponent; the camera follows the fight and keeps both fighters in frame.</li>
+        <li>Your fighter always faces the opponent; the camera holds a fixed side view and keeps both fighters in frame.</li>
       </ul>
       <h3>Arena camera (works now)</h3>
       <ul>
-        <li><b>Drag</b> with mouse or finger — adjust the viewing angle around the fight.</li>
-        <li><b>Scroll / pinch</b> — zoom in and out.</li>
+        <li><b>Fixed side view</b> — the classic fighting-game angle, steady through the whole fight. No follow, no zoom, no shake.</li>
         <li>Outside a match, the camera slowly orbits on its own (cinematic idle).</li>
+        <li>On phones, the fight plays in landscape — rotate your device so both fighters stay big.</li>
       </ul>
       <h3>Menus (work now)</h3>
       <ul>
@@ -486,7 +486,7 @@
       <p>RISHU.COM is an original premium 3D browser fighting game. All branding, characters, UI and visuals are original creations — nothing is copied from any other game.</p>
       <p><b>Phase 1:</b> main menu, game modes, character selection, How to Play, Settings, fullscreen, loading screen, and the 3D arena preview (Three.js / WebGL).</p>
       <p><b>Phase 2:</b> six original fighters with distinct procedural 3D models, a live rotatable character preview, idle / walk / victory / selection animations, and a confirmed-pick flow that carries into the arena.</p>
-      <p><b>Phase 3:</b> movement (walk, run, jump), a third-person fight camera, touch controls, a match timer and pause.</p>
+      <p><b>Phase 3:</b> movement (walk, run, jump), a fixed side-view fight camera, touch controls, a match timer and pause.</p>
       <p><b>Phase 4:</b> combat — punches, kicks, blocks, dodges, combos, deterministic damage, live health bars and KO. Special moves and rounds are a later phase.</p>
     </div>
   </div>

@@ -1,26 +1,28 @@
-// RISHU.COM — Phase 4 — arena.js
+// RISHU.COM — Phase 4 + Tekken fixed camera — arena.js
 // Three.js fighting-arena scene. Phase 4: full combat on top of the
 // Phase 3 movement system — attacks, block, dodge, combos, deterministic
 // damage, live health bars, KO. No rounds / Special / CPU AI yet
 // (Phase 5). Responsibilities: scene, lighting, shadows, floor texture,
-// camera, match lifecycle (startMatch / beginMatch / stopMatch), idle
-// orbit, resize, visibility pause, quality switching.
+// fixed side-view camera, match lifecycle (startMatch / beginMatch /
+// stopMatch), idle orbit, resize, visibility pause, quality switching,
+// landscape-first rotate gate (mobile).
 //
 // Tick order (Phase 4 — see PHASE4-PLAN.md §3; the order is the contract):
 // combat updates BEFORE the movement controllers (hit tests use the
 // pre-move positions), movement is zeroed where combat locks it, then
 // controllers → separation → combat.syncAnimator() (re-asserts combat
 // poses AFTER the controllers, or attacks never show) → animators →
-// camera → HUD sync. The combat module is the ONLY decider of damage;
-// this file routes inputs and events, never computes a hit itself.
+// HUD sync. There is NO per-frame camera work: the fixed pose is set
+// once in beginMatch() and never touched again. The combat module is
+// the ONLY decider of damage; this file routes inputs and events,
+// never computes a hit itself.
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildFighterModel } from './fighterModels.js';
 import { createFighterAnimator } from './fighterAnimations.js';
 import { createKeyboardInput, createFighterController, resolveSeparation } from './movement.js';
-import { createFightCamera } from './camera.js';
-import { createCinematicCamera } from './cinematicCamera.js';
+import { createFixedCamera } from './fixedCamera.js';
 import { createTouchControls } from './touchControls.js';
 import { createHud } from './hud.js';
 import { createFighterCombat, ATTACKS, DEFENSE, flashFighter } from './combat.js';
@@ -246,7 +248,17 @@ export function createArena(container, opts = {}) {
     cap.position.set(x, 2.08, z);
     scene.add(cap);
   }
-  // Ropes: horizontal cylinders along each side, 3 heights
+  // Ropes: horizontal cylinders along each side, 3 heights.
+  // Near-side ropes (sides[2], z = +4.6) are kept in `nearRopes` with
+  // CLONED materials: ropeMat/ropeMat2 are shared across all 12 ropes,
+  // and only the near side fades during a match (fixed side view — the
+  // near ropes would otherwise cross the fighters). The far ropes keep
+  // the shared materials and never fade.
+  const nearRopes = [];
+  function setNearRopesFaded(faded) {
+    // Idempotent: safe on every exit path, including a double stopMatch.
+    for (const r of nearRopes) r.material.opacity = faded ? 0.15 : 1;
+  }
   const ropeHeights = [0.95, 1.35, 1.75];
   const sides = [
     { from: [-4.6, -4.6], to: [4.6, -4.6] },
@@ -254,7 +266,7 @@ export function createArena(container, opts = {}) {
     { from: [4.6, 4.6], to: [-4.6, 4.6] },
     { from: [-4.6, 4.6], to: [-4.6, -4.6] },
   ];
-  sides.forEach((side) => {
+  sides.forEach((side, si) => {
     ropeHeights.forEach((h, hi) => {
       const [x1, z1] = side.from;
       const [x2, z2] = side.to;
@@ -268,6 +280,12 @@ export function createArena(container, opts = {}) {
       // rotateX(90°) lays the cylinder along that direction.
       rope.lookAt(x2, h, z2);
       rope.rotateX(Math.PI / 2);
+      if (si === 2) {
+        // Near side: own material instance (transparent so opacity works).
+        rope.material = rope.material.clone();
+        rope.material.transparent = true;
+        nearRopes.push(rope);
+      }
       scene.add(rope);
     });
   });
@@ -355,8 +373,15 @@ export function createArena(container, opts = {}) {
   let lastMatch = null; // { mode, charA, charB }
   let ctrlA = null;
   let ctrlB = null;
-  let fightCamera = null;
-  let cinematic = null;
+  // Fixed side-view camera (Tekken style): one ortho pose per match,
+  // never updated per frame. renderCamera is what the tick renders —
+  // the perspective orbit camera outside a match, the fixed camera
+  // during one. rotatePaused tracks a pause made BY the rotate gate
+  // (not by the user) so rotating back only resumes a gate pause.
+  let fixedCamera = null;
+  let renderCamera = camera;
+  let rotatePaused = false;
+  let rotatePromptEl = null;
   let keyboard = null;
   let touch = null;
   let hud = null;
@@ -411,8 +436,8 @@ export function createArena(container, opts = {}) {
   const UP_V = new THREE.Vector3(0, 1, 0);
 
   function dodgeDirFor(moveInput) {
-    if (!fightCamera) return null;
-    fightCamera.getForward(_fwdV);
+    if (!fixedCamera) return null;
+    fixedCamera.getForward(_fwdV);
     _fwdV.y = 0;
     if (_fwdV.lengthSq() < 0.001) _fwdV.set(0, 0, -1);
     _fwdV.normalize();
@@ -486,7 +511,9 @@ export function createArena(container, opts = {}) {
         if (flashTimer) { clearTimeout(flashTimer); flashTimer = 0; }
         flashTimer = flashFighter(defenderModel);
         const def = ATTACKS[ev.attack];
-        if (def && def.shake > 0 && fightCamera) fightCamera.addShake(def.shake);
+        // No camera shake: the fixed camera never moves (the shake call
+        // site died with the old fight-camera module; the shake: values
+        // in the attack table are inert data now).
         if (def && def.shake > 0) {
           hitstop = ev.attack === 'heavyKick' ? DEFENSE.HITSTOP_HEAVY_KICK : DEFENSE.HITSTOP_HEAVY;
         }
@@ -523,13 +550,82 @@ export function createArena(container, opts = {}) {
     }
   }
 
+  // ---- Landscape-first rotate gate (mobile only) ----
+  // Fights run in landscape on phones so fighters stay PC-sized
+  // (~48-50% of canvas height). Portrait is not a fight orientation:
+  // the rotate prompt gates arena entry and pauses mid-match.
+  // Desktop narrow windows are NOT gated (coarse-pointer check).
+  function isPhone() {
+    return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  }
+  function isPhonePortrait() {
+    return isPhone() && window.innerHeight > window.innerWidth;
+  }
+  function showRotatePrompt() { if (rotatePromptEl) rotatePromptEl.hidden = false; }
+  function hideRotatePrompt() { if (rotatePromptEl) rotatePromptEl.hidden = true; }
+  function updateRotateGate() {
+    if (!isPhone()) return;
+    // No match at all (boot / orbit preview): the prompt never appears
+    // outside a match — menu, modes and select stay portrait-friendly.
+    if (!matchBuilt && !matchRunning) return;
+    if (window.innerHeight > window.innerWidth) {
+      // A finished match is owned by the KO overlay (Rematch/Quit must
+      // stay tappable in portrait); Rematch re-gates in beginMatch.
+      if (matchOver) return;
+      // Only claim the pause if the user had not already paused:
+      // rotating back must not resume a user pause.
+      if (matchRunning && hud && !hud.isPaused()) {
+        hud.setPaused(true);
+        rotatePaused = true;
+      }
+      showRotatePrompt();
+    } else {
+      hideRotatePrompt();
+      if (matchBuilt && !matchRunning) {
+        // Gated entry: the phone is landscape now — start the fight.
+        beginMatch();
+      } else if (rotatePaused && hud) {
+        rotatePaused = false;
+        hud.setPaused(false);
+      }
+    }
+  }
+
+  // Best-effort orientation lock (Android Chrome only): lock() needs
+  // fullscreen + a user gesture; iOS Safari has no lock() (through
+  // iOS 26.6), so it is skipped there. The rotate prompt is the
+  // guarantee — this never blocks, never throws, never shows an error.
+  function tryOrientationLock() {
+    try {
+      if (!isPhone()) return;
+      const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+      const isIOS = /iPhone|iPad|iPod/.test(ua)
+        || (typeof navigator !== 'undefined' && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      if (isIOS) return;
+      if (!window.screen || !window.screen.orientation || typeof window.screen.orientation.lock !== 'function') return;
+      if (!document.documentElement || typeof document.documentElement.requestFullscreen !== 'function') return;
+      const lockIt = () => {
+        try {
+          const p = window.screen.orientation.lock('landscape');
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch (e) { /* best-effort only */ }
+      };
+      if (!document.fullscreenElement) {
+        try {
+          const p = document.documentElement.requestFullscreen();
+          if (p && typeof p.then === 'function') p.then(lockIt).catch(() => {});
+          else lockIt();
+        } catch (e) { /* best-effort only */ }
+      } else {
+        lockIt();
+      }
+    } catch (e) { /* best-effort only — the rotate prompt covers it */ }
+  }
+
   function togglePause() {
     if (!matchRunning || !hud) return;
     // A finished match cannot be paused — the KO overlay owns the box.
     if (matchOver) return;
-    // Pause is a no-op while the cinematic intro is playing (there is
-    // nothing to pause yet, and pausing would freeze the intro mid-sweep).
-    if (cinematic && cinematic.getState() === 'playing') return;
     hud.setPaused(!hud.isPaused());
   }
 
@@ -540,30 +636,19 @@ export function createArena(container, opts = {}) {
     const arenaScreen = document.getElementById('screen-arena');
     const arenaFrame = arenaScreen ? arenaScreen.querySelector('.arena-frame') : null;
 
-    fightCamera = createFightCamera({
-      camera,
-      controls,
-      domElement: renderer.domElement,
-      // camera.js calls these with an output vector — copy into it
-      // (returning the position would be discarded and the midpoint
-      // would stay stale at the origin).
-      getFighterA: (out) => out.copy(fighterA.model.group.position),
-      getFighterB: (out) => out.copy(fighterB.model.group.position),
-    });
-
     ctrlA = createFighterController({
       model: fighterA.model,
       animator: fighterA.animator,
       char: charA,
       getOpponentPosition: (out) => out.copy(fighterB.model.group.position),
-      getCameraForward: (out) => fightCamera.getForward(out),
+      getCameraForward: (out) => fixedCamera.getForward(out),
     });
     ctrlB = createFighterController({
       model: fighterB.model,
       animator: fighterB.animator,
       char: charB,
       getOpponentPosition: (out) => out.copy(fighterA.model.group.position),
-      getCameraForward: (out) => fightCamera.getForward(out),
+      getCameraForward: (out) => fixedCamera.getForward(out),
     });
 
     keyboard = createKeyboardInput({ onPauseKey: togglePause });
@@ -576,14 +661,9 @@ export function createArena(container, opts = {}) {
         p2: charB,
         mode,
         before: arenaFrame,
-        // The HUD Pause button bypasses togglePause(), so the intro
-        // guard lives here too: a pause pressed mid-intro is undone
-        // synchronously (overlay never paints) and the sweep continues.
+        // The HUD Pause button bypasses togglePause(); its callback
+        // owns the arena-side `paused` flag directly.
         onPause: () => {
-          if (cinematic && cinematic.getState() === 'playing') {
-            if (hud) hud.setPaused(false);
-            return;
-          }
           paused = true;
         },
         onResume: () => { paused = false; },
@@ -614,47 +694,51 @@ export function createArena(container, opts = {}) {
     combatB = makeCombat('B', charB, ctrlB, ctrlA);
     audio = createCombatAudio({ enabled: opts.sound !== false });
 
+    // Fixed side-view camera: created here, AFTER the controllers /
+    // keyboard / HUD / touch exist (same order as before). The
+    // controllers' getCameraForward closures above read this variable
+    // when called, so they always see the fixed forward (0, 0, -1).
+    fixedCamera = createFixedCamera();
+
+    // Landscape-first (mobile): best-effort orientation lock, attempted
+    // in the entry-gesture chain (still inside the transient-activation
+    // window). The rotate prompt is the guarantee if it fails.
+    tryOrientationLock();
+
     matchOver = false;
     hitstop = 0;
     simSec = 0;
-
-    // Cinematic intro: created here, AFTER fightCamera/HUD/input exist
-    // (start() can call onDone synchronously on reduced motion), but
-    // only STARTED by beginMatch() once the arena screen is visible.
-    cinematic = createCinematicCamera({
-      camera,
-      domElement: renderer.domElement,
-      getFighterA: (out) => out.copy(fighterA.model.group.position),
-      getFighterB: (out) => out.copy(fighterB.model.group.position),
-      onDone: finishIntro,
-    });
 
     matchBuilt = true;
     matchRunning = false;
     paused = false;
   }
 
+  // Fixed-camera fight start (no intro — the user removed it): engage
+  // the permanent ortho pose, fade the near ropes, stop the orbit, then
+  // start the HUD timer and enable input — so the timer counts FIGHT
+  // time. Landscape-first (mobile): a phone held in portrait waits for
+  // the rotate prompt — no camera engage, no timer, no input until the
+  // phone is landscape (onResize fires the gate again on rotation).
   function beginMatch() {
     if (!matchBuilt || matchRunning) return;
+    if (isPhonePortrait()) {
+      showRotatePrompt();
+      return;
+    }
     matchRunning = true;
-    // Cinematic intro first; finishIntro() below starts the fight when
-    // the sweep is done (or skipped, or reduced-motion). Input stays
-    // locked and the HUD timer unstarted until then.
-    if (cinematic) cinematic.start();
-    // Blur any focused button so Enter/Space cannot re-trigger it
-    // while they are also P2-run / P1-jump keys.
-    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-  }
-
-  // Runs exactly once per intro (the cinematic guards its own finish):
-  // hands the live camera pose to the fight camera, then starts the
-  // HUD timer and enables input — so the timer counts FIGHT time.
-  function finishIntro() {
-    if (!matchBuilt) return; // user left during the intro
-    if (fightCamera) fightCamera.startFight();
+    if (fixedCamera) {
+      fixedCamera.engage(container.clientWidth / Math.max(1, container.clientHeight));
+      renderCamera = fixedCamera.getCamera();
+    }
+    setNearRopesFaded(true);
+    if (controls) { controls.enabled = false; controls.autoRotate = false; }
     if (hud) hud.start();
     if (keyboard) keyboard.setEnabled(true);
     if (touch) touch.setEnabled(true);
+    // Blur any focused button so Enter/Space cannot re-trigger it
+    // while they are also P2-run / P1-jump keys.
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   }
 
   // Every arena entry is a live match: if a match was built, begin it;
@@ -668,11 +752,14 @@ export function createArena(container, opts = {}) {
   }
 
   function stopMatch() {
+    hideRotatePrompt();
+    rotatePaused = false;
     if (!matchBuilt && !matchRunning) return;
     if (keyboard) { keyboard.setEnabled(false); keyboard.detach(); keyboard = null; }
     if (touch) { touch.setEnabled(false); touch.dispose(); touch = null; }
-    if (cinematic) { cinematic.dispose(); cinematic = null; }
-    if (fightCamera) { fightCamera.dispose(); fightCamera = null; }
+    if (fixedCamera) { fixedCamera.disengage(); fixedCamera = null; }
+    renderCamera = camera;
+    setNearRopesFaded(false);
     if (hud) { hud.destroy(); hud = null; }
     // Phase 4 — combat teardown. Clear the pending hit-flash restore
     // first: it touches a model that stopMatch may rebuild next.
@@ -730,7 +817,8 @@ export function createArena(container, opts = {}) {
       const c2use = (lastMatch && lastMatch.mode === '2p') ? c2in : ZERO_COMBAT;
       if (hitstop > 0) {
         // Heavy-hit freeze: skip the sim (combat/controllers/
-        // animators); the camera still updates and the frame renders.
+        // animators); the frame still renders (the fixed camera
+        // never moves, so there is nothing to update).
         hitstop -= dt;
       } else {
         if (combatA) combatA.update(dt, c1in, combatB);
@@ -751,12 +839,10 @@ export function createArena(container, opts = {}) {
           hud.setCombo('p2', combo.getCount('B'));
         }
       }
-      // Cinematic intro owns the camera until it hands off; the fight
-      // camera takes over after that (never both in one frame).
-      if (cinematic && cinematic.getState() === 'playing') cinematic.update(dt);
-      else if (fightCamera) fightCamera.update(dt);
-      // No controls.update() in fight mode — OrbitControls is disabled
-      // and must not fight the camera lerp.
+      // No per-frame camera work in a match: the fixed pose was set in
+      // beginMatch() and never changes. No controls.update() in fight
+      // mode — OrbitControls is disabled and must not rotate the
+      // (unrendered) perspective camera behind the fight.
     } else if (matchOver && !paused) {
       // KO frozen frame: the KO fall still blends (animator updates),
       // but nothing else moves and the camera holds its last pose.
@@ -769,10 +855,34 @@ export function createArena(container, opts = {}) {
       controls.update();
     }
     // While paused the frame is frozen (no sim, no camera) but still rendered.
-    renderer.render(scene, camera);
+    renderer.render(scene, renderCamera);
   }
   tick();
   onProgress(100, 'Arena ready');
+
+  // Landscape-first rotate prompt (mobile): built once, hidden by
+  // default. Lives on the arena screen (covers HUD + canvas) and is
+  // shown only by the rotate gate (phone + portrait). No markup in
+  // index.html by design — same pattern as the HUD, which hud.js builds.
+  // #screen-arena is display:none outside the arena screen, so the
+  // fixed overlay can never appear on menu / modes / select.
+  {
+    const arenaScreenEl = (typeof document !== 'undefined')
+      ? document.getElementById('screen-arena') : null;
+    if (arenaScreenEl) {
+      rotatePromptEl = document.createElement('div');
+      rotatePromptEl.className = 'rotate-prompt';
+      rotatePromptEl.hidden = true;
+      rotatePromptEl.setAttribute('role', 'dialog');
+      rotatePromptEl.setAttribute('aria-label', 'Rotate your device to play');
+      rotatePromptEl.innerHTML = '<div class="rotate-prompt-card">'
+        + '<div class="rotate-prompt-glyph" aria-hidden="true">\u21bb</div>'
+        + '<h2>Rotate your device to play</h2>'
+        + '<p>Turn your phone sideways — the fight plays in landscape so both fighters stay big.</p>'
+        + '</div>';
+      arenaScreenEl.appendChild(rotatePromptEl);
+    }
+  }
 
   function onResize() {
     if (disposed) return;
@@ -782,6 +892,11 @@ export function createArena(container, opts = {}) {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
+    // Frustum only — the fixed pose never moves on resize.
+    if (fixedCamera) fixedCamera.resize(w / Math.max(1, h));
+    // A phone rotation fires resize: portrait pauses + shows the
+    // prompt, landscape hides it and resumes / starts the fight.
+    updateRotateGate();
   }
   window.addEventListener('resize', onResize);
 
@@ -816,6 +931,8 @@ export function createArena(container, opts = {}) {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', onResize);
       document.removeEventListener('visibilitychange', onVisibility);
+      if (rotatePromptEl && rotatePromptEl.parentNode) rotatePromptEl.parentNode.removeChild(rotatePromptEl);
+      rotatePromptEl = null;
       controls.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === container) {

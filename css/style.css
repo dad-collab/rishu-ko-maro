@@ -1277,3 +1277,60 @@ main { flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 2
 @media (prefers-reduced-motion: reduce) {
   .touch-knob { transition: none; }
 }
+
+/* ---------- Tekken fixed camera: rotate prompt + landscape sizing ----------
+   Rotate prompt: full-screen overlay over the arena screen, shown only
+   by the rotate gate (phone + portrait). Built by arena.js at runtime.
+   z-index 60 sits above the modal (50) and the HUD pause overlay (30),
+   below the nav overlay (80) / toast (90) / loading (100), none of
+   which is active during a match. */
+.rotate-prompt {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(10, 20, 36, 0.88);
+}
+.rotate-prompt-card {
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+  background: var(--ivory-050);
+  color: var(--ink);
+  border: 1px solid var(--silver);
+  border-radius: var(--radius-lg);
+  padding: 28px 24px;
+}
+.rotate-prompt-glyph {
+  font-size: 44px;
+  line-height: 1;
+  color: var(--brand);
+  margin-bottom: 12px;
+}
+.rotate-prompt-card h2 {
+  font-family: var(--font-display);
+  margin: 0 0 8px;
+  font-size: 1.3rem;
+}
+.rotate-prompt-card p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+
+/* Landscape phones: the arena canvas is as tall as the phone allows
+   (fills the viewport when scrolled into view), capped like desktop.
+   NOTE — measured deviation from the audit plan's literal formula
+   `calc(100dvh - HUD)`: the live HUD is 100px tall at 844x390 (timer +
+   Pause button stacked), so 100dvh - 100px = 290px would SHRINK the
+   canvas below the current 340px min-height and drop fighters to
+   ~148px (below the 160px target). 100dvh gives ~178px fighters at
+   844x390 — the width bound (0.2238 x 794px canvas) — vs ~124px under
+   the plain 62vh rule. The HUD scrolls with the page, so subtracting
+   it buys no viewport-fitting anyway (nav + band + note sit above it). */
+@media (orientation: landscape) and (pointer: coarse) {
+  #arena-wrap { height: min(100dvh, 560px); }
+}
