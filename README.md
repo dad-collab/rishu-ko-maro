@@ -44,6 +44,14 @@ Premium 3D browser-based fighting game. **Original branding, UI, characters and 
 - **Touch combat** — LP / HP / KICK / HK tap buttons, hold-to-block BLOCK, tap DODGE, in a 3×2 grid beside JUMP (P1 only, ≥ 44 px targets). Touch block is high guard only (no low guard on touch).
 - **Integration rule (the setFighters lesson)** — the arena tick calls `combat.syncAnimator()` AFTER the movement controllers and BEFORE `animator.update`, or the controllers would overwrite attack / hit / block poses with idle in the same frame. Combat updates run BEFORE the controllers so hit tests use pre-move positions.
 
+## What is in the Visual Upgrade
+
+- **Tournament stadium (`js/stadium.js`)** — three tiered stand rings (lathe-built, one mesh per ring), 500 instanced spectators on desktop / 250 on mobile (2 `InstancedMesh` draws, subset bob every ~100 ms, no shadows), 4 canvas banners, an emissive jumbotron (static canvas texture, redrawn per matchup), a light truss with 4 additive light cones and a warm wash over the far crowd. Stadium ≤ 25 draw calls; total ≤ 150 desktop / ≤ 110 mobile. Ring geometry, clamp r=4.6, ropes and spawn points are untouched.
+- **Character rig v2 (`js/fighterModels.js`)** — elbow + knee pivots, hands (glove + thumb), neck, faces (brow, nose, mouth, ears), chest/abdomen torso split and richer clothing. Proportions fixed: head Ø 0.47 → 0.32 (~13.5% of height), hip pivot 0.82 → 1.15 (legs ~50% of height). Total height UNCHANGED ~2.35 so the fixed-camera framing holds. All 6 identities kept.
+- **Animations (`js/fighterAnimations.js`)** — the slide fix: the walk phase rate now comes from the controller's measured speed (`setSpeed()`, fed by the arena tick), the swing scales with speed and the foot plants at full forward reach. Punches extend the elbow, kicks chamber the knee, blocks cross the forearms, hits step back instead of sliding, dodges push off. Special pose slots (`special` state, kinds punch / blast / kick / ultimate) are ready for Phase 5 to drive.
+- **Presentation** — theatre mode (the arena fills the viewport during a match, nav/footer hidden), the HUD overlays the canvas (names above the bars, bars draining toward the centre timer badge, HP as `100%`), a FIGHT banner + 1.2 s fight-start freeze (input + timer held), and a victory moment on KO (winner `victory` pose + confetti + crowd surge). `js/effects.js` is the ONE shared effects module (pooled particles: bursts, rings, trails, confetti) — Phase 5 reuses it unchanged.
+- **Camera** — unchanged and still fixed: no auto-distance, no zoom, no shake. The fixed frustum (half-width 5.25 m) already frames both fighters at every legal separation.
+
 ## What is NOT in Phase 4 (honest list)
 
 - Special attacks — hooks/stub only (`trySpecial()` returns `{ ok: false, reason: 'phase-5' }`), no input bound, no UI

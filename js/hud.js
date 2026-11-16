@@ -1,18 +1,24 @@
-// RISHU.COM — Phase 3 — hud.js
+// RISHU.COM — Visual Upgrade — hud.js
 // Match HUD for the arena screen. DOM is built by this module (styled
 // with the redesigned navy/ivory/orange tokens — no hex colours here).
-// Mounts at the top of the match area: inserted before the arena frame
-// (opts.before), so the bar sits above the canvas, not below it.
+// Visual Upgrade: the HUD is an OVERLAY on the canvas (mounted inside
+// the arena frame, opts.mountEl), not a bar above it — long health
+// bars draining toward a centre timer badge, names stacked ABOVE the
+// bars, HP shown as a percentage. The pause/KO overlay and the new
+// FIGHT banner live in the same overlay root.
 //
 // Contents (brief §8):
 // - P1 name + character icon (initials tile, fighter colour — real data)
 // - P2 name + character icon
 // - Match timer (counts UP from 00:00 — there are no rounds yet)
 // - Health bars: LIVE since Phase 4 (100 HP, deplete on real damage,
-//   KO at 0). The bar label is "HEALTH" + the HP number; a low bar
-//   (≤ 25 HP) gets the .hud-health--low state. No fake damage — the
-//   width comes only from combat.js via setHealth().
+//   KO at 0). The bar label is "HEALTH" + the HP number as "100%"; a
+//   low bar (≤ 25 HP) gets the .hud-health--low state. No fake damage —
+//   the width comes only from combat.js via setHealth().
 // - Pause button + pause overlay (Resume / Quit to Menu — both real).
+// - FIGHT banner (visual upgrade): showFightBanner(text) /
+//   hideFightBanner() — the arena drives the 1.2 s fight-start freeze
+//   with it; Phase 5 will drive round text through the same component.
 //
 // Pause semantics: setPaused(true) freezes the simulation (the arena tick
 // must skip movement/animator/camera updates while paused — see the
@@ -37,7 +43,7 @@ function isLight(hex) {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.45;
 }
 
-export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQuit, before } = {}) {
+export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQuit, before, mountEl } = {}) {
   let elapsed = 0; // ms of match time (excludes paused time)
   let timerId = 0;
   let running = false;
@@ -58,30 +64,37 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
   root.className = 'hud';
   root.setAttribute('aria-label', 'Match HUD');
   root.innerHTML = `
-    <div class="hud-side hud-side--p1">
-      <span class="hud-icon" data-hud="p1-icon">?</span>
-      <span class="hud-name" data-hud="p1-name">Player 1</span>
-      <div class="hud-health" role="img" aria-label="Player 1 health">
-        <i><b></b></i>
-        <span class="hud-health-label">HEALTH</span>
-        <span class="hud-hp" data-hud="p1-hp">100</span>
+    <div class="hud-top">
+      <div class="hud-side hud-side--p1">
+        <div class="hud-side-head">
+          <span class="hud-icon" data-hud="p1-icon">?</span>
+          <span class="hud-name" data-hud="p1-name">Player 1</span>
+        </div>
+        <div class="hud-health" role="img" aria-label="Player 1 health">
+          <i><b></b></i>
+          <span class="hud-health-label">HEALTH</span>
+          <span class="hud-hp" data-hud="p1-hp">100%</span>
+        </div>
+        <div class="hud-combo" data-hud="p1-combo" hidden>COMBO ×<span data-hud="p1-combo-n">2</span></div>
       </div>
-      <div class="hud-combo" data-hud="p1-combo" hidden>COMBO ×<span data-hud="p1-combo-n">2</span></div>
-    </div>
-    <div class="hud-center">
-      <div class="hud-timer"><span data-hud="timer">00:00</span><small>TIME</small></div>
-      <button class="btn btn-small" data-hud="pause" type="button" aria-label="Pause match">⏸ Pause</button>
-    </div>
-    <div class="hud-side hud-side--p2">
-      <span class="hud-icon" data-hud="p2-icon">?</span>
-      <span class="hud-name" data-hud="p2-name">Player 2</span>
-      <div class="hud-health" role="img" aria-label="Player 2 health">
-        <i><b></b></i>
-        <span class="hud-health-label">HEALTH</span>
-        <span class="hud-hp" data-hud="p2-hp">100</span>
+      <div class="hud-center">
+        <div class="hud-timer"><span data-hud="timer">00:00</span><small>TIME</small></div>
+        <button class="btn btn-small" data-hud="pause" type="button" aria-label="Pause match">⏸ Pause</button>
       </div>
-      <div class="hud-combo" data-hud="p2-combo" hidden>COMBO ×<span data-hud="p2-combo-n">2</span></div>
+      <div class="hud-side hud-side--p2">
+        <div class="hud-side-head">
+          <span class="hud-icon" data-hud="p2-icon">?</span>
+          <span class="hud-name" data-hud="p2-name">Player 2</span>
+        </div>
+        <div class="hud-health" role="img" aria-label="Player 2 health">
+          <i><b></b></i>
+          <span class="hud-health-label">HEALTH</span>
+          <span class="hud-hp" data-hud="p2-hp">100%</span>
+        </div>
+        <div class="hud-combo" data-hud="p2-combo" hidden>COMBO ×<span data-hud="p2-combo-n">2</span></div>
+      </div>
     </div>
+    <div class="fight-banner" data-hud="fight-banner" hidden>FIGHT</div>
     <div class="hud-pause-overlay" data-hud="pause-overlay" hidden>
       <div class="hud-pause-box" role="dialog" aria-modal="true" aria-label="Match paused">
         <h2 data-hud="overlay-title">Paused</h2>
@@ -91,9 +104,12 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
         <button class="btn" data-hud="quit" type="button">Quit to Game Modes</button>
       </div>
     </div>`;
-  // Mount above the arena frame (before it in DOM order); fall back to
-  // appending when the anchor is missing so the HUD never disappears.
-  if (before && before.parentNode === arenaScreenEl) arenaScreenEl.insertBefore(root, before);
+  // Visual upgrade — mount INSIDE the arena frame so the HUD overlays
+  // the canvas (opts.mountEl, passed by arena.js). Fall back to the old
+  // above-the-frame mount when the anchor is missing so the HUD never
+  // disappears.
+  if (mountEl) mountEl.appendChild(root);
+  else if (before && before.parentNode === arenaScreenEl) arenaScreenEl.insertBefore(root, before);
   else arenaScreenEl.appendChild(root);
 
   const $ = (k) => root.querySelector(`[data-hud="${k}"]`);
@@ -186,7 +202,7 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
     const fill = bar ? bar.querySelector('i b') : null;
     const num = $(`${which}-hp`);
     if (fill) fill.style.width = `${(value / max) * 100}%`;
-    if (num) num.textContent = String(value);
+    if (num) num.textContent = `${value}%`;
     if (bar) {
       bar.classList.toggle('hud-health--low', value <= 25);
       bar.setAttribute('aria-label', `Health ${value} of ${max}`);
@@ -224,6 +240,27 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
     if (overlayMode !== 'ko') return;
     koHandlers = null;
     hideOverlay();
+  }
+
+  // Visual upgrade — FIGHT banner. Takes a text parameter from day one
+  // ("FIGHT" today; Phase 5 will drive "ROUND 2" → "FIGHT"). The
+  // animation restarts on every show (reflow trick) so a Rematch
+  // replays the pop.
+  function showFightBanner(text) {
+    const el = $('fight-banner');
+    if (!el) return;
+    el.textContent = text || 'FIGHT';
+    el.hidden = false;
+    el.classList.remove('fight-banner--show');
+    void el.offsetWidth;
+    el.classList.add('fight-banner--show');
+  }
+
+  function hideFightBanner() {
+    const el = $('fight-banner');
+    if (!el) return;
+    el.hidden = true;
+    el.classList.remove('fight-banner--show');
   }
 
   const pauseBtn = $('pause');
@@ -279,6 +316,8 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
     setCombo,
     showKo,
     hideKo,
+    showFightBanner,
+    hideFightBanner,
     setFighters(a, b, m) {
       currentP1 = a || currentP1;
       currentP2 = b || currentP2;
@@ -292,7 +331,10 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
     destroy() {
       running = false;
       if (timerId) clearInterval(timerId);
-      if (root.parentNode === arenaScreenEl) arenaScreenEl.removeChild(root);
+      // The root may live inside the arena frame (overlay mount) or
+      // directly under the arena screen (fallback mount) — remove from
+      // whichever parent holds it.
+      if (root.parentNode) root.parentNode.removeChild(root);
     },
   };
 }

@@ -1,11 +1,12 @@
-// RISHU.COM — Phase 4 + Tekken fixed camera — arena.js
+// RISHU.COM — Phase 4 + Tekken fixed camera + Visual Upgrade — arena.js
 // Three.js fighting-arena scene. Phase 4: full combat on top of the
 // Phase 3 movement system — attacks, block, dodge, combos, deterministic
 // damage, live health bars, KO. No rounds / Special / CPU AI yet
-// (Phase 5). Responsibilities: scene, lighting, shadows, floor texture,
-// fixed side-view camera, match lifecycle (startMatch / beginMatch /
-// stopMatch), idle orbit, resize, visibility pause, quality switching,
-// landscape-first rotate gate (mobile).
+// (Phase 5). Visual Upgrade: tournament stadium (stands, instanced
+// crowd, banners, jumbotron, light rig), pooled particle effects,
+// theatre-mode full-screen fights, FIGHT banner + 1.2 s fight-start
+// freeze, victory moment (winner pose + confetti + crowd surge), and
+// the animator slide fix (measured speed fed to the animators).
 //
 // Tick order (Phase 4 — see PHASE4-PLAN.md §3; the order is the contract):
 // combat updates BEFORE the movement controllers (hit tests use the
@@ -19,6 +20,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildFighterModel } from './fighterModels.js';
 import { createFighterAnimator } from './fighterAnimations.js';
 import { createKeyboardInput, createFighterController, resolveSeparation } from './movement.js';
@@ -28,12 +30,57 @@ import { createHud } from './hud.js';
 import { createFighterCombat, ATTACKS, DEFENSE, flashFighter } from './combat.js';
 import { createComboTracker, comboScale } from './comboSystem.js';
 import { createCombatAudio } from './combatAudio.js';
+import { buildStadium } from './stadium.js';
+import { createEffects, FX_COLORS } from './effects.js';
 
 const QUALITY = {
   low: { pixelRatio: 1, shadows: false, antialias: false },
   medium: { pixelRatio: Math.min(window.devicePixelRatio || 1, 1.5), shadows: true, antialias: true },
   high: { pixelRatio: Math.min(window.devicePixelRatio || 1, 2), shadows: true, antialias: true },
 };
+
+// Merge static same-material geometry into one draw call. The arena
+// measured 120 draw calls on a phone vs the ≤110 budget, and these
+// groups are fully static — no per-object updates, no fading — so
+// merging is free performance. Parts are fresh single-use geometries:
+// the helper applies the placement matrix, merges, then disposes the
+// inputs. Placement reuses a dummy Object3D so the merge uses three's
+// own rotation/lookAt math instead of hand-derived angles. (The ropes
+// are NOT merged: the near side fades via per-rope cloned materials.)
+const _mergeDummy = new THREE.Object3D();
+function placedMatrix(x, y, z, rotX = 0, lookAt = null) {
+  _mergeDummy.position.set(x, y, z);
+  _mergeDummy.rotation.set(rotX, 0, 0);
+  _mergeDummy.updateMatrix();
+  if (lookAt) {
+    _mergeDummy.lookAt(lookAt[0], lookAt[1], lookAt[2]);
+    _mergeDummy.updateMatrix();
+  }
+  return _mergeDummy.matrix.clone();
+}
+function mergedMesh(parts, material) {
+  const geos = parts.map(({ geo, matrix }) => {
+    if (matrix) geo.applyMatrix4(matrix);
+    return geo;
+  });
+  const merged = mergeGeometries(geos, false);
+  geos.forEach((g) => g.dispose());
+  return new THREE.Mesh(merged, material);
+}
+
+// Rope placement matrix: the exact sequence the rope meshes used
+// (midpoint position → lookAt the far end → rotateX 90° to lay the
+// Y-aligned cylinder along the side), replicated on the dummy so the
+// merged far ropes sit exactly where the individual ropes did.
+function ropeMatrix(x1, z1, x2, z2, h) {
+  _mergeDummy.position.set((x1 + x2) / 2, h, (z1 + z2) / 2);
+  _mergeDummy.rotation.set(0, 0, 0);
+  _mergeDummy.updateMatrix();
+  _mergeDummy.lookAt(x2, h, z2);
+  _mergeDummy.rotateX(Math.PI / 2);
+  _mergeDummy.updateMatrix();
+  return _mergeDummy.matrix.clone();
+}
 
 function makeFloorTexture() {
   // Procedural canvas texture — no external images needed.
@@ -68,6 +115,21 @@ function makeFloorTexture() {
   g.lineWidth = 4;
   g.beginPath();
   g.arc(512, 512, 300, 0, Math.PI * 2);
+  g.stroke();
+
+  // Visual upgrade — outer decorative ring (thin ivory dashes + a
+  // fine orange hairline outside the main ring line, inside r=5.4).
+  g.strokeStyle = 'rgba(242,237,227,0.4)';
+  g.lineWidth = 4;
+  g.setLineDash([26, 18]);
+  g.beginPath();
+  g.arc(512, 512, 480, 0, Math.PI * 2);
+  g.stroke();
+  g.setLineDash([]);
+  g.strokeStyle = 'rgba(188,82,34,0.5)';
+  g.lineWidth = 3;
+  g.beginPath();
+  g.arc(512, 512, 500, 0, Math.PI * 2);
   g.stroke();
 
   // Centre mark — thin-stroke open R (same construction as the wordmark)
@@ -171,7 +233,7 @@ export function createArena(container, opts = {}) {
   key.shadow.camera.far = 30;
   scene.add(key);
 
-  const fill = new THREE.DirectionalLight(0x5B7A99, 0.55);
+  const fill = new THREE.DirectionalLight(0x5B7A99, 0.7);
   fill.position.set(-6, 4, -4);
   scene.add(fill);
 
@@ -239,15 +301,21 @@ export function createArena(container, opts = {}) {
   const ropeMat = new THREE.MeshStandardMaterial({ color: 0xBC5222, roughness: 0.5 });
   const ropeMat2 = new THREE.MeshStandardMaterial({ color: 0xF2EDE3, roughness: 0.5 });
   const corners = [[-4.6, -4.6], [4.6, -4.6], [4.6, 4.6], [-4.6, 4.6]];
-  for (const [x, z] of corners) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 1.5, 12), postMat);
-    post.position.set(x, 1.3, z);
-    post.castShadow = true;
-    scene.add(post);
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), ropeMat);
-    cap.position.set(x, 2.08, z);
-    scene.add(cap);
-  }
+  // Draw-call merge: the 4 posts share one geometry + material, and so
+  // do the 4 caps — each group merges into a single mesh (see the
+  // helpers above). The posts keep castShadow (no-op while shadows
+  // are off); the caps keep ropeMat (they never fade — only the near
+  // ropes do, and those stay separate).
+  const posts = mergedMesh(corners.map(([x, z]) => ({
+    geo: new THREE.CylinderGeometry(0.09, 0.11, 1.5, 12),
+    matrix: placedMatrix(x, 1.3, z),
+  })), postMat);
+  posts.castShadow = true;
+  scene.add(posts);
+  scene.add(mergedMesh(corners.map(([x, z]) => ({
+    geo: new THREE.SphereGeometry(0.12, 12, 10),
+    matrix: placedMatrix(x, 2.08, z),
+  })), ropeMat));
   // Ropes: horizontal cylinders along each side, 3 heights.
   // Near-side ropes (sides[2], z = +4.6) are kept in `nearRopes` with
   // CLONED materials: ropeMat/ropeMat2 are shared across all 12 ropes,
@@ -266,29 +334,48 @@ export function createArena(container, opts = {}) {
     { from: [4.6, 4.6], to: [-4.6, 4.6] },
     { from: [-4.6, 4.6], to: [-4.6, -4.6] },
   ];
+  // Far ropes share 2 materials — merge into 2 draw calls (was 9).
+  // Same draw-call merge as the posts above; the near side stays
+  // separate (its 3 ropes fade via cloned materials).
+  const farRopeParts = { orange: [], ivory: [] };
   sides.forEach((side, si) => {
     ropeHeights.forEach((h, hi) => {
       const [x1, z1] = side.from;
       const [x2, z2] = side.to;
       const len = Math.hypot(x2 - x1, z2 - z1);
-      const rope = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.035, 0.035, len, 8),
-        hi === 1 ? ropeMat : ropeMat2
-      );
-      rope.position.set((x1 + x2) / 2, h, (z1 + z2) / 2);
-      // Cylinder is Y-aligned: lookAt points +Z at the far end, then
-      // rotateX(90°) lays the cylinder along that direction.
-      rope.lookAt(x2, h, z2);
-      rope.rotateX(Math.PI / 2);
       if (si === 2) {
         // Near side: own material instance (transparent so opacity works).
-        rope.material = rope.material.clone();
+        const rope = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.035, 0.035, len, 8),
+          (hi === 1 ? ropeMat : ropeMat2).clone(),
+        );
         rope.material.transparent = true;
+        rope.position.set((x1 + x2) / 2, h, (z1 + z2) / 2);
+        // Cylinder is Y-aligned: lookAt points +Z at the far end, then
+        // rotateX(90°) lays the cylinder along that direction.
+        rope.lookAt(x2, h, z2);
+        rope.rotateX(Math.PI / 2);
         nearRopes.push(rope);
+        scene.add(rope);
+      } else {
+        (hi === 1 ? farRopeParts.orange : farRopeParts.ivory).push({
+          geo: new THREE.CylinderGeometry(0.035, 0.035, len, 8),
+          matrix: ropeMatrix(x1, z1, x2, z2, h),
+        });
       }
-      scene.add(rope);
     });
   });
+  scene.add(mergedMesh(farRopeParts.orange, ropeMat));
+  scene.add(mergedMesh(farRopeParts.ivory, ropeMat2));
+
+  onProgress(78, 'Building the stadium…');
+  // ---- Visual upgrade — stadium + effects (mounted once) ----
+  // Stands, instanced crowd, banners, jumbotron, light rig (stadium.js)
+  // and the pooled particle system (effects.js). Both update from the
+  // tick — in the match branch AND the preview branch, so the crowd is
+  // alive on the menu's arena preview too.
+  const stadium = buildStadium(scene, { quality: qualityName });
+  const effects = createEffects(scene, { maxParticles: qualityName === 'low' ? 256 : 512 });
 
   onProgress(82, 'Placing fighters…');
   // ---- Backdrop: dark arena walls + crowd light strips ----
@@ -299,17 +386,22 @@ export function createArena(container, opts = {}) {
   wall.position.y = 5;
   scene.add(wall);
 
-  // Light strips around the wall (restrained steel)
+  // Light strips around the wall (restrained steel) — merged by
+  // material into 2 draw calls (was 12; same draw-call merge as the
+  // posts above). The merged meshes span the whole ring, so they
+  // always render (2 calls) instead of ~5 individual strips.
+  const stripSteelMat = new THREE.MeshBasicMaterial({ color: 0x5B7A99 });
+  const stripDarkMat = new THREE.MeshBasicMaterial({ color: 0x2A3B52 });
+  const stripParts = { steel: [], dark: [] };
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2;
-    const strip = new THREE.Mesh(
-      new THREE.BoxGeometry(1.4, 0.08, 0.08),
-      new THREE.MeshBasicMaterial({ color: i % 3 === 0 ? 0x5B7A99 : 0x2A3B52 })
-    );
-    strip.position.set(Math.cos(a) * 19.5, 6.5, Math.sin(a) * 19.5);
-    strip.lookAt(0, 6.5, 0);
-    scene.add(strip);
+    (i % 3 === 0 ? stripParts.steel : stripParts.dark).push({
+      geo: new THREE.BoxGeometry(1.4, 0.08, 0.08),
+      matrix: placedMatrix(Math.cos(a) * 19.5, 6.5, Math.sin(a) * 19.5, 0, [0, 6.5, 0]),
+    });
   }
+  scene.add(mergedMesh(stripParts.steel, stripSteelMat));
+  scene.add(mergedMesh(stripParts.dark, stripDarkMat));
 
   // ---- Fighters (Phase 2 models, idle animation) ----
   // Default pair matches the original defaults (Rishu vs Ayaan) until
@@ -342,6 +434,8 @@ export function createArena(container, opts = {}) {
     scene.remove(fighterB.model.group);
     fighterA = placeFighter(charA, -1.6, Math.PI / 2);
     fighterB = placeFighter(charB, 1.6, -Math.PI / 2);
+    // Visual upgrade — the jumbotron shows the new matchup.
+    if (stadium) stadium.setMatchup(charA, charB);
   }
 
   onProgress(92, 'Setting the camera…');
@@ -404,6 +498,11 @@ export function createArena(container, opts = {}) {
   let hitstop = 0;
   let simSec = 0;
   let flashTimer = 0;
+  // Visual upgrade — FIGHT intro countdown (seconds left; input +
+  // timer held until it hits 0) and the KO winner, whose victory pose
+  // the matchOver branch re-asserts if anything overwrites it.
+  let introT = 0;
+  let victoryFighter = null;
 
   const ZERO_MOVE = { mx: 0, mz: 0, run: false, jump: false };
   const ZERO_COMBAT = { attack: null, block: false, blockLow: false, dodge: false, evade: false, grounded: true };
@@ -485,6 +584,17 @@ export function createArena(container, opts = {}) {
     matchOver = true;
     if (hud) hud.stop();
     if (audio) audio.play('ko');
+    // Visual upgrade — victory moment: the winner raises their arms,
+    // confetti bursts above them and the crowd surges. The matchOver
+    // branch re-asserts the pose if the killing tick overwrote it.
+    const winner = winnerId === 'A' ? fighterA : fighterB;
+    winner.animator.setState('victory');
+    victoryFighter = winner;
+    if (effects) {
+      const p = winner.model.group.position;
+      effects.confetti({ x: p.x, y: p.y + 2.4, z: p.z });
+    }
+    if (stadium) stadium.setExcitement(1);
     if (hud && lastMatch) {
       const winnerChar = winnerId === 'A' ? lastMatch.charA : lastMatch.charB;
       hud.showKo(winnerChar ? winnerChar.name : 'Winner',
@@ -510,6 +620,18 @@ export function createArena(container, opts = {}) {
         if (audio) audio.play(SOUND_FOR_ATTACK[ev.attack] || 'punchLight');
         if (flashTimer) { clearTimeout(flashTimer); flashTimer = 0; }
         flashTimer = flashFighter(defenderModel);
+        // Visual upgrade — impact burst (+ ring on heavy hits) at the
+        // defender's torso, and the crowd surges on a heavy hit.
+        const heavy = ev.attack === 'heavyPunch' || ev.attack === 'heavyKick';
+        if (effects) {
+          const p = defenderModel.group.position;
+          effects.burst(
+            { x: p.x, y: p.y + 1.3, z: p.z },
+            { color: heavy ? FX_COLORS.orange : FX_COLORS.gold, count: heavy ? 22 : 14 },
+          );
+          if (heavy) effects.ring({ x: p.x, y: p.y + 1.0, z: p.z }, { color: FX_COLORS.orange });
+        }
+        if (heavy && stadium) stadium.setExcitement(0.6);
         const def = ATTACKS[ev.attack];
         // No camera shake: the fixed camera never moves (the shake call
         // site died with the old fight-camera module; the shake: values
@@ -661,6 +783,9 @@ export function createArena(container, opts = {}) {
         p2: charB,
         mode,
         before: arenaFrame,
+        // Visual upgrade — the HUD overlays the canvas (mounted inside
+        // the arena frame); the old `before` mount is the fallback.
+        mountEl: arenaFrame,
         // The HUD Pause button bypasses togglePause(); its callback
         // owns the arena-side `paused` flag directly.
         onPause: () => {
@@ -716,10 +841,12 @@ export function createArena(container, opts = {}) {
 
   // Fixed-camera fight start (no intro — the user removed it): engage
   // the permanent ortho pose, fade the near ropes, stop the orbit, then
-  // start the HUD timer and enable input — so the timer counts FIGHT
-  // time. Landscape-first (mobile): a phone held in portrait waits for
-  // the rotate prompt — no camera engage, no timer, no input until the
-  // phone is landscape (onResize fires the gate again on rotation).
+  // show the FIGHT banner for 1.2 s (theatre mode: the arena fills the
+  // viewport). Input + the HUD timer start only when the banner ends —
+  // the tick counts introT down. Landscape-first (mobile): a phone held
+  // in portrait waits for the rotate prompt — no camera engage, no
+  // timer, no input until the phone is landscape (onResize fires the
+  // gate again on rotation).
   function beginMatch() {
     if (!matchBuilt || matchRunning) return;
     if (isPhonePortrait()) {
@@ -733,9 +860,10 @@ export function createArena(container, opts = {}) {
     }
     setNearRopesFaded(true);
     if (controls) { controls.enabled = false; controls.autoRotate = false; }
-    if (hud) hud.start();
-    if (keyboard) keyboard.setEnabled(true);
-    if (touch) touch.setEnabled(true);
+    document.body.classList.add('fighting');
+    onResize();
+    introT = 1.2;
+    if (hud) hud.showFightBanner('FIGHT');
     // Blur any focused button so Enter/Space cannot re-trigger it
     // while they are also P2-run / P1-jump keys.
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
@@ -754,6 +882,9 @@ export function createArena(container, opts = {}) {
   function stopMatch() {
     hideRotatePrompt();
     rotatePaused = false;
+    introT = 0;
+    victoryFighter = null;
+    document.body.classList.remove('fighting');
     if (!matchBuilt && !matchRunning) return;
     if (keyboard) { keyboard.setEnabled(false); keyboard.detach(); keyboard = null; }
     if (touch) { touch.setEnabled(false); touch.dispose(); touch = null; }
@@ -782,6 +913,7 @@ export function createArena(container, opts = {}) {
     controls.target.set(0, 1.2, 0);
     controls.enabled = true;
     controls.autoRotate = true;
+    onResize(); // theatre mode is off — the canvas goes back to 62vh
   }
 
   // ---- Render loop: paused when tab hidden, capped work ----
@@ -802,11 +934,28 @@ export function createArena(container, opts = {}) {
       // positions), movement is zeroed where combat locks it, then
       // controllers -> separation -> combat.syncAnimator() (re-asserts
       // combat poses AFTER the controllers, or attacks never show) ->
-      // animators -> camera -> HUD sync.
+      // animators -> stadium/effects -> HUD sync.
       // In PvC the CPU fighter gets ZERO input (no AI) — it stands in
       // guard, facing the player. The P2 keys are still read (to consume
       // the jump/combat edges) but discarded outside 2P Local, so arrow
       // keys can never move the CPU fighter.
+      if (introT > 0) {
+        // FIGHT banner countdown: the crowd is alive and the fighters
+        // breathe in guard, but there is no sim, no input and no timer
+        // yet — the fight starts when the banner ends.
+        introT -= dt;
+        fighterA.animator.update(dt, t);
+        fighterB.animator.update(dt, t);
+        if (stadium) stadium.update(dt, t);
+        if (effects) effects.update(dt);
+        if (introT <= 0) {
+          introT = 0;
+          if (hud) hud.hideFightBanner();
+          if (hud) hud.start();
+          if (keyboard) keyboard.setEnabled(true);
+          if (touch) touch.setEnabled(true);
+        }
+      } else {
       simSec += dt;
       if (combo) { combo.expire('A', simSec); combo.expire('B', simSec); }
       const p1in = readP1Input();
@@ -828,8 +977,19 @@ export function createArena(container, opts = {}) {
         if (ctrlA) ctrlA.update(dt, p1in);
         if (ctrlB) ctrlB.update(dt, p2in);
         if (ctrlA && ctrlB) resolveSeparation(ctrlA, ctrlB);
-        if (combatA) combatA.syncAnimator();
-        if (combatB) combatB.syncAnimator();
+        // If a KO landed during this tick's combat updates, onKo has
+        // already set the winner 'victory' (and receiveAttack set the
+        // loser 'ko' synchronously). syncAnimator would overwrite the
+        // winner with the killing attack's anim for one frame, so skip
+        // it — the matchOver branch owns both poses from here.
+        if (!matchOver) {
+          if (combatA) combatA.syncAnimator();
+          if (combatB) combatB.syncAnimator();
+        }
+        // Visual upgrade — slide fix: feed each controller's measured
+        // ground speed to its animator BEFORE animator.update().
+        if (ctrlA) fighterA.animator.setSpeed(ctrlA.speed);
+        if (ctrlB) fighterB.animator.setSpeed(ctrlB.speed);
         fighterA.animator.update(dt, t);
         fighterB.animator.update(dt, t);
         if (hud && combatA && combatB && combo) {
@@ -838,6 +998,9 @@ export function createArena(container, opts = {}) {
           hud.setCombo('p1', combo.getCount('A'));
           hud.setCombo('p2', combo.getCount('B'));
         }
+        if (stadium) stadium.update(dt, t);
+        if (effects) effects.update(dt);
+      }
       }
       // No per-frame camera work in a match: the fixed pose was set in
       // beginMatch() and never changes. No controls.update() in fight
@@ -846,13 +1009,23 @@ export function createArena(container, opts = {}) {
     } else if (matchOver && !paused) {
       // KO frozen frame: the KO fall still blends (animator updates),
       // but nothing else moves and the camera holds its last pose.
+      // The winner holds the victory pose (re-asserted here in case
+      // the killing tick overwrote it) while the confetti falls and
+      // the crowd surges.
+      if (victoryFighter && victoryFighter.animator.getState() !== 'victory') {
+        victoryFighter.animator.setState('victory');
+      }
       fighterA.animator.update(dt, t);
       fighterB.animator.update(dt, t);
+      if (stadium) stadium.update(dt, t);
+      if (effects) effects.update(dt);
     } else if (!paused) {
       // Preview / idle: breathing + guard sway from the animator, free orbit.
       fighterA.animator.update(dt, t);
       fighterB.animator.update(dt, t);
       controls.update();
+      if (stadium) stadium.update(dt, t);
+      if (effects) effects.update(dt);
     }
     // While paused the frame is frozen (no sim, no camera) but still rendered.
     renderer.render(scene, renderCamera);
@@ -931,6 +1104,8 @@ export function createArena(container, opts = {}) {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', onResize);
       document.removeEventListener('visibilitychange', onVisibility);
+      if (stadium) stadium.dispose();
+      if (effects) effects.dispose();
       if (rotatePromptEl && rotatePromptEl.parentNode) rotatePromptEl.parentNode.removeChild(rotatePromptEl);
       rotatePromptEl = null;
       controls.dispose();
