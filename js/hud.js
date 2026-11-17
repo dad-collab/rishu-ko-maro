@@ -1,24 +1,33 @@
-// RISHU.COM — Visual Upgrade — hud.js
+// RISHU.COM — Visual Upgrade + Phase 5 — hud.js
 // Match HUD for the arena screen. DOM is built by this module (styled
 // with the redesigned navy/ivory/orange tokens — no hex colours here).
 // Visual Upgrade: the HUD is an OVERLAY on the canvas (mounted inside
 // the arena frame, opts.mountEl), not a bar above it — long health
 // bars draining toward a centre timer badge, names stacked ABOVE the
-// bars, HP shown as a percentage. The pause/KO overlay and the new
+// bars, HP shown as a percentage. The pause/winner overlay and the new
 // FIGHT banner live in the same overlay root.
 //
-// Contents (brief §8):
+// Contents (brief §8 + Phase 5):
 // - P1 name + character icon (initials tile, fighter colour — real data)
 // - P2 name + character icon
-// - Match timer (counts UP from 00:00 — there are no rounds yet)
+// - Match timer (counts UP from 00:00, resets per round — best-of-3,
+//   first to 2 wins the match)
 // - Health bars: LIVE since Phase 4 (100 HP, deplete on real damage,
 //   KO at 0). The bar label is "HEALTH" + the HP number as "100%"; a
 //   low bar (≤ 25 HP) gets the .hud-health--low state. No fake damage —
 //   the width comes only from combat.js via setHealth().
+// - Special slots (Phase 5): the fighter's signature move + a
+//   depleting cooldown bar + READY state, driven by the arena every
+//   frame via setSpecial().
+// - Round pips (Phase 5): "ROUND n" + two pips per side, driven by
+//   setRounds().
 // - Pause button + pause overlay (Resume / Quit to Menu — both real).
+// - WINNER overlay (Phase 5): same box as pause, shown when a fighter
+//   takes 2 rounds (Rematch / Quit). Replaces the Phase 4 KO overlay.
 // - FIGHT banner (visual upgrade): showFightBanner(text) /
 //   hideFightBanner() — the arena drives the 1.2 s fight-start freeze
-//   with it; Phase 5 will drive round text through the same component.
+//   with it; Phase 5 drives round text through the same component
+//   ("ROUND 2 — FIGHT!").
 //
 // Pause semantics: setPaused(true) freezes the simulation (the arena tick
 // must skip movement/animator/camera updates while paused — see the
@@ -52,11 +61,11 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
   let currentP2 = p2 || null;
   let currentMode = mode || 'pvc';
 
-  // The pause and KO overlays share ONE element (the pause box) with
-  // two contents — overlayMode tracks which one is showing so the two
-  // can never fight over it.
-  let overlayMode = null; // null | 'pause' | 'ko'
-  let koHandlers = null; // { onRematch, onQuit } for the KO overlay
+  // The pause and winner overlays share ONE element (the pause box)
+  // with two contents — overlayMode tracks which one is showing so the
+  // two can never fight over it.
+  let overlayMode = null; // null | 'pause' | 'winner'
+  let overlayHandlers = null; // { onRematch, onQuit } for the winner overlay
   let hpP1 = 100;
   let hpP2 = 100;
 
@@ -75,10 +84,19 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
           <span class="hud-health-label">HEALTH</span>
           <span class="hud-hp" data-hud="p1-hp">100%</span>
         </div>
+        <div class="hud-special" data-hud="p1-special">
+          <span class="hud-special-name" data-hud="p1-special-name">—</span>
+          <i class="hud-special-bar"><b data-hud="p1-special-fill"></b></i>
+          <span class="hud-special-state" data-hud="p1-special-state">READY</span>
+        </div>
         <div class="hud-combo" data-hud="p1-combo" hidden>COMBO ×<span data-hud="p1-combo-n">2</span></div>
       </div>
       <div class="hud-center">
         <div class="hud-timer"><span data-hud="timer">00:00</span><small>TIME</small></div>
+        <div class="hud-rounds" data-hud="rounds">
+          <span class="hud-round-label" data-hud="round-label">ROUND 1</span>
+          <span class="hud-pips" data-hud="pips"><i data-hud="pip-a1"></i><i data-hud="pip-a2"></i><b aria-hidden="true">·</b><i data-hud="pip-b1"></i><i data-hud="pip-b2"></i></span>
+        </div>
         <button class="btn btn-small" data-hud="pause" type="button" aria-label="Pause match">⏸ Pause</button>
       </div>
       <div class="hud-side hud-side--p2">
@@ -90,6 +108,11 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
           <i><b></b></i>
           <span class="hud-health-label">HEALTH</span>
           <span class="hud-hp" data-hud="p2-hp">100%</span>
+        </div>
+        <div class="hud-special" data-hud="p2-special">
+          <span class="hud-special-name" data-hud="p2-special-name">—</span>
+          <i class="hud-special-bar"><b data-hud="p2-special-fill"></b></i>
+          <span class="hud-special-state" data-hud="p2-special-state">READY</span>
         </div>
         <div class="hud-combo" data-hud="p2-combo" hidden>COMBO ×<span data-hud="p2-combo-n">2</span></div>
       </div>
@@ -144,10 +167,10 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
       if (name2) name2.textContent = `${currentMode === '2p' ? 'P2' : 'CPU'} · ${currentP2.name}`;
     }
     const hint = $('pause-hint');
-    if (hint && overlayMode !== 'ko') {
+    if (hint && overlayMode !== 'winner') {
       hint.textContent = currentMode === '2p'
-        ? 'P1: WASD + Space + Shift · J/K punch · U/I kick · L block · O dodge. P2: Arrows + Right Shift + Enter · Numpad 1/2/3/0 attack · Numpad Enter block · Numpad 5 dodge. Touch drives P1 only.'
-        : 'WASD move · Space jump · Shift run · J/K punch · U/I kick · L block · O dodge. Touch: left joystick + JUMP + combat buttons.';
+        ? 'P1: WASD + Space + Shift · J/K punch · U/I kick · L block · O dodge · H special. P2: Arrows + Right Shift + Enter · Numpad 1/2/3/0 attack · Numpad Enter block · Numpad 5 dodge · Numpad 6 special. Touch drives P1 only.'
+        : 'WASD move · Space jump · Shift run · J/K punch · U/I kick · L block · O dodge · H special. Touch: left joystick + JUMP + combat buttons.';
     }
   }
 
@@ -164,17 +187,19 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
   }
 
   function setPaused(v) {
-    // A finished match cannot be paused — the KO overlay owns the box.
-    if (overlayMode === 'ko') return;
+    // A finished match cannot be paused — the winner overlay owns the box.
+    if (overlayMode === 'winner') return;
     paused = !!v;
     const btn = $('pause');
     if (btn) btn.textContent = paused ? '▶ Resume' : '⏸ Pause';
     if (paused) {
-      // Swap the box back to pause content (it may have shown KO text
-      // in a previous match on this HUD instance — it cannot, the HUD
-      // is rebuilt per match, but stay honest anyway).
+      // Swap the box back to pause content (it may have shown winner
+      // text in a previous match on this HUD instance — it cannot, the
+      // HUD is rebuilt per match, but stay honest anyway).
       const title = $('overlay-title');
       if (title) title.textContent = 'Paused';
+      const box = root.querySelector('.hud-pause-box');
+      if (box) box.classList.remove('hud-pause-box--winner');
       const rematchBtn = $('rematch');
       if (rematchBtn) rematchBtn.hidden = true;
       const resumeBtn = $('resume');
@@ -222,23 +247,79 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
     }
   }
 
-  // KO overlay (Phase 4): same box as pause, different content.
-  function showKo(winnerName, onRematch, onQuit) {
-    koHandlers = { onRematch, onQuit };
+  // Phase 5 — special cooldown slot: move name + a depleting cooldown
+  // bar + READY state. `frac` is the fraction of the cooldown REMAINING
+  // (1 = just used, 0 = ready) — the bar depletes as it recharges.
+  // Change-guarded on the rounded percent and the state label, so the
+  // arena's per-frame sync does not churn the DOM.
+  const specialState = {
+    p1: { name: null, pct: -1, label: null },
+    p2: { name: null, pct: -1, label: null },
+  };
+  function setSpecial(which, { name, frac, ready, remaining } = {}) {
+    const st = specialState[which];
+    if (!st) return;
+    const pct = Math.round(Math.max(0, Math.min(1, frac || 0)) * 100);
+    const label = ready ? 'READY' : `${Math.ceil(remaining || 0)}s`;
+    if (name !== st.name) {
+      st.name = name || null;
+      const el = $(`${which}-special-name`);
+      if (el) el.textContent = name || '—';
+    }
+    if (pct !== st.pct) {
+      st.pct = pct;
+      const fill = $(`${which}-special-fill`);
+      if (fill) fill.style.width = `${pct}%`;
+    }
+    if (label !== st.label) {
+      st.label = label;
+      const el = $(`${which}-special-state`);
+      if (el) el.textContent = label;
+      const slot = $(`${which}-special`);
+      if (slot) slot.classList.toggle('hud-special--ready', !!ready);
+    }
+  }
+
+  // Phase 5 — round pips + "ROUND n" label. winsA/winsB are the round
+  // wins so far (first to 2 takes the match).
+  const roundState = { round: 0, winsA: -1, winsB: -1 };
+  function setRounds(round, winsA, winsB) {
+    if (round !== roundState.round) {
+      roundState.round = round;
+      const el = $('round-label');
+      if (el) el.textContent = `ROUND ${round}`;
+    }
+    if (winsA !== roundState.winsA || winsB !== roundState.winsB) {
+      roundState.winsA = winsA;
+      roundState.winsB = winsB;
+      const a1 = $('pip-a1'); if (a1) a1.classList.toggle('hud-pip--won', winsA >= 1);
+      const a2 = $('pip-a2'); if (a2) a2.classList.toggle('hud-pip--won', winsA >= 2);
+      const b1 = $('pip-b1'); if (b1) b1.classList.toggle('hud-pip--won', winsB >= 1);
+      const b2 = $('pip-b2'); if (b2) b2.classList.toggle('hud-pip--won', winsB >= 2);
+    }
+  }
+
+  // Phase 5 — WINNER overlay: same box as pause, different content.
+  // Replaces the Phase 4 KO overlay (showKo is retired — a KO wins a
+  // ROUND now, and only the match win shows this screen).
+  function showWinner(winnerName, loserName, score, handlers = {}) {
+    overlayHandlers = { onRematch: handlers.onRematch, onQuit: handlers.onQuit };
     const title = $('overlay-title');
-    if (title) title.textContent = 'K.O.';
+    if (title) title.textContent = `${winnerName} — WINNER`;
     const hint = $('pause-hint');
-    if (hint) hint.textContent = `${winnerName} wins the fight!`;
+    if (hint) hint.textContent = `${loserName} — DEFEATED · Score ${score}`;
+    const box = root.querySelector('.hud-pause-box');
+    if (box) box.classList.add('hud-pause-box--winner');
     const resumeBtn = $('resume');
     if (resumeBtn) resumeBtn.hidden = true;
     const rematchBtn = $('rematch');
     if (rematchBtn) rematchBtn.hidden = false;
-    showOverlay('ko');
+    showOverlay('winner');
   }
 
-  function hideKo() {
-    if (overlayMode !== 'ko') return;
-    koHandlers = null;
+  function hideWinner() {
+    if (overlayMode !== 'winner') return;
+    overlayHandlers = null;
     hideOverlay();
   }
 
@@ -268,10 +349,10 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
   const resumeBtn = $('resume');
   if (resumeBtn) resumeBtn.addEventListener('click', () => setPaused(false));
   const rematchBtn = $('rematch');
-  if (rematchBtn) rematchBtn.addEventListener('click', () => { if (koHandlers && koHandlers.onRematch) koHandlers.onRematch(); });
+  if (rematchBtn) rematchBtn.addEventListener('click', () => { if (overlayHandlers && overlayHandlers.onRematch) overlayHandlers.onRematch(); });
   const quitBtn = $('quit');
   if (quitBtn) quitBtn.addEventListener('click', () => {
-    if (overlayMode === 'ko' && koHandlers && koHandlers.onQuit) koHandlers.onQuit();
+    if (overlayMode === 'winner' && overlayHandlers && overlayHandlers.onQuit) overlayHandlers.onQuit();
     else if (onQuit) onQuit();
   });
 
@@ -284,11 +365,13 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
       running = true;
       paused = false;
       overlayMode = null;
-      koHandlers = null;
+      overlayHandlers = null;
       hpP1 = 100;
       hpP2 = 100;
       const overlay = $('pause-overlay');
       if (overlay) overlay.hidden = true;
+      const box = root.querySelector('.hud-pause-box');
+      if (box) box.classList.remove('hud-pause-box--winner');
       const rematchBtn = $('rematch');
       if (rematchBtn) rematchBtn.hidden = true;
       const resumeBtn = $('resume');
@@ -297,6 +380,9 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
       setHealth('p2', 100, 100);
       setCombo('p1', 0);
       setCombo('p2', 0);
+      setRounds(1, 0, 0);
+      setSpecial('p1', { name: null, frac: 0, ready: true, remaining: 0 });
+      setSpecial('p2', { name: null, frac: 0, ready: true, remaining: 0 });
       renderTimer();
       if (timerId) clearInterval(timerId);
       timerId = setInterval(() => {
@@ -306,7 +392,7 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
         }
       }, 250);
     },
-    // Stop the match timer (KO path). Rendering continues.
+    // Stop the match timer (KO / match-end path). Rendering continues.
     stop() {
       running = false;
       if (timerId) clearInterval(timerId);
@@ -314,8 +400,10 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
     },
     setHealth,
     setCombo,
-    showKo,
-    hideKo,
+    setSpecial,
+    setRounds,
+    showWinner,
+    hideWinner,
     showFightBanner,
     hideFightBanner,
     setFighters(a, b, m) {

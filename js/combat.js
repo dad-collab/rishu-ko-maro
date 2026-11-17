@@ -1,8 +1,8 @@
-// RISHU.COM — Phase 4 — combat.js
-// Per-fighter combat state machine: attacks, block, dodge/evade, hitstun,
-// KO. Pure logic — no DOM, no three import (positions are plain {x, z}
-// objects; the arena passes the movement controller's live position,
-// which is a THREE.Vector3 and satisfies the same shape).
+// RISHU.COM — Phase 5 — combat.js
+// Per-fighter combat state machine: attacks, specials, block, dodge/evade,
+// hitstun, KO. Pure logic — no DOM, no three import (positions are plain
+// {x, z} objects; the arena passes the movement controller's live
+// position, which is a THREE.Vector3 and satisfies the same shape).
 //
 // Deterministic: damage comes only from COMBAT-DESIGN.md §2 (stats in,
 // same number out — no Math.random anywhere in this file).
@@ -16,6 +16,13 @@
 //
 // Hit-test rule: exactly ONE test per attack, at the first frame of the
 // active window. The attack carries hitDone so it can never register twice.
+// Specials follow the same rule per sub-hit (Storm Barrage: 3 real tests).
+//
+// Phase 5 damage bases (see PHASE5-PLAN.md §2): lightPunch 5, kick 8,
+// heavyPunch 12, heavyKick 14, special 20 — flat bases x the stat formula.
+// `hitstop` is an explicit field per attack (seconds of freeze after a
+// clean hit); `shake` is the live heavy-hit camera offset and is read by
+// the arena separately — the two were conflated in Phase 4.
 
 export const MAX_HP = 100;
 
@@ -25,26 +32,26 @@ export const ATTACKS = {
   lightPunch: {
     id: 'lightPunch', anim: 'jab', guard: 'high',
     startup: 0.10, active: 0.08, recovery: 0.14,
-    range: 1.9, baseDamage: 4, hitstun: 0.22, blockstun: 0.12,
-    chip: 0, shake: 0, knockback: 0,
+    range: 1.9, baseDamage: 5, hitstun: 0.22, blockstun: 0.12,
+    chip: 0, shake: 0, hitstop: 0, knockback: 0,
   },
   heavyPunch: {
     id: 'heavyPunch', anim: 'cross', guard: 'high',
     startup: 0.18, active: 0.10, recovery: 0.28,
-    range: 2.0, baseDamage: 8, hitstun: 0.38, blockstun: 0.20,
-    chip: 1, shake: 0.05, knockback: 0.15,
+    range: 2.0, baseDamage: 12, hitstun: 0.38, blockstun: 0.20,
+    chip: 1, shake: 0.05, hitstop: 0.04, knockback: 0.15,
   },
   kick: {
     id: 'kick', anim: 'kick', guard: 'mid',
     startup: 0.14, active: 0.10, recovery: 0.22,
-    range: 2.3, baseDamage: 6, hitstun: 0.30, blockstun: 0.16,
-    chip: 1, shake: 0, knockback: 0.10,
+    range: 2.3, baseDamage: 8, hitstun: 0.30, blockstun: 0.16,
+    chip: 1, shake: 0, hitstop: 0, knockback: 0.10,
   },
   heavyKick: {
     id: 'heavyKick', anim: 'roundhouse', guard: 'low',
     startup: 0.24, active: 0.12, recovery: 0.38,
-    range: 2.5, baseDamage: 11, hitstun: 0.50, blockstun: 0.28,
-    chip: 1, shake: 0.08, knockback: 0.35,
+    range: 2.5, baseDamage: 14, hitstun: 0.50, blockstun: 0.28,
+    chip: 1, shake: 0.08, hitstop: 0.06, knockback: 0.35,
   },
 };
 
@@ -115,12 +122,16 @@ export function createFighterCombat({
   getFacing, // () => radians (the controller's facing)
   getComboScale, // () => number (from the combo tracker; default 1)
   onEvent, // (ev) => {} — see event list below
+  specialController, // createSpecialController result (Phase 5; may be null)
+  getSimTime, // () => number — the arena's accumulated sim seconds
 } = {}) {
   const scale = typeof getComboScale === 'function' ? getComboScale : () => 1;
+  const simTime = typeof getSimTime === 'function' ? getSimTime : () => 0;
   const emit = typeof onEvent === 'function' ? onEvent : () => {};
   let hp = MAX_HP;
-  let state = 'ready'; // 'ready' | 'attack' | 'block' | 'dodge' | 'hitstun' | 'ko'
+  let state = 'ready'; // 'ready' | 'attack' | 'special' | 'block' | 'dodge' | 'hitstun' | 'ko'
   let attack = null; // { def, t, hitDone, phase }
+  let special = null; // { def, t, hitsFired, launched } — Phase 5 special in flight
   let blockLow = false;
   let stunTimer = 0;
   let dodgeTimer = 0;
@@ -134,6 +145,26 @@ export function createFighterCombat({
   // for a clean hit, 'blockHigh' / 'blockLow' for a blocked hit
   // (blockstun reuses the stun timer — the pose must NOT be the hit pose).
   let stunAnim = 'hit';
+
+  // Which animator segment a time `t` is in for a def with
+  // startup/active/recovery: 0 = startup (wind-up), 1 = active
+  // (the hit), 2 = recovery. segT is 0..1 within the segment
+  // (clamped — the final tick of an attack can overshoot `total` by
+  // one dt before endAttack runs, and the animator's contract is
+  // 0..1).
+  // Passed to setAnim/syncAnimator for BOTH attacks and specials so the
+  // animator actually drives its per-segment keyframes (Phase 4 passed
+  // only `phase`, so seg/segT were always 0 and attack poses sat at
+  // guard — the animator's documented contract, see
+  // fighterAnimations.js attackPose).
+  function segFor(t, def) {
+    const clamp01 = (v) => Math.max(0, Math.min(1, v));
+    if (t < def.startup) return { seg: 0, segT: def.startup > 0 ? clamp01(t / def.startup) : 1 };
+    if (t < def.startup + def.active) {
+      return { seg: 1, segT: def.active > 0 ? clamp01((t - def.startup) / def.active) : 1 };
+    }
+    return { seg: 2, segT: def.recovery > 0 ? clamp01((t - def.startup - def.active) / def.recovery) : 1 };
+  }
 
   function setAnim(name, opts) {
     // Same-state calls with a new phase go through (attack keyframes);
@@ -169,11 +200,85 @@ export function createFighterCombat({
     }
   }
 
+  // --- Phase 5: specials ------------------------------------------------
+  // trySpecial() is the ONLY entry point, and it STARTS the special on
+  // success. The cooldown is consumed on success even if the special
+  // then whiffs, is blocked or is interrupted — used = used (the
+  // controller owns that rule).
+  function trySpecial() {
+    if (!specialController || !specialController.def) {
+      return { ok: false, reason: 'no-special' };
+    }
+    if (state !== 'ready') return { ok: false, reason: 'busy' };
+    const res = specialController.tryUse(simTime());
+    if (!res.ok) return res;
+    startSpecial(res.def);
+    return { ok: true, def: res.def };
+  }
+
+  function startSpecial(def) {
+    special = { def, t: 0, hitsFired: 0, launched: false };
+    state = 'special';
+    bufferedAttack = null;
+    bufferTimer = 0;
+    emit({ type: 'special-start', attack: 'special', move: def.move });
+  }
+
+  function endSpecial() {
+    special = null;
+    state = 'ready';
+    setAnim('idle');
+  }
+
+  // One sub-hit of the in-flight special. Barrage fires this 3 times
+  // (7/7/6); every other special once (20). Each sub-hit is a real
+  // receiveAttack call, so block/dodge/range work per hit, and the
+  // combo tracker sees each as a hit (the arena counts special hits).
+  // The sub-def carries id 'special' so events read cleanly; its
+  // baseDamage is the sub-hit's own value.
+  function fireSpecialHit(i, opponent) {
+    const { def } = special;
+    // Multi-hit specials (Storm Barrage): only the FINAL sub-hit knocks
+    // the defender back. Earlier sub-hits carry knockback 0 — otherwise
+    // each hit pushes the defender 0.40 m away and the later sub-hits
+    // whiff outside the special's own reach (browser E2E showed [7,7]
+    // instead of [7,7,6] from a 1.8 m start: after two hits the defender
+    // sat ~2.5 m away, past the 2.15 m reach). Single-hit specials are
+    // unaffected (i === 0 is also the last sub-hit there).
+    const isLastSubHit = i >= (def.hits ?? 1) - 1;
+    const subDef = {
+      ...def,
+      id: 'special',
+      baseDamage: def.hitDamages[i] ?? def.baseDamage,
+      knockback: isLastSubHit ? def.knockback : 0,
+    };
+    let outcome = 'miss';
+    if (opponent) {
+      const myPos = getPosition();
+      const oppPos = getOpponentPosition();
+      const fx = Math.sin(getFacing());
+      const fz = Math.cos(getFacing());
+      const dx = oppPos.x - myPos.x;
+      const dz = oppPos.z - myPos.z;
+      const len = Math.hypot(dx, dz) || 1;
+      const facingDot = (fx * dx + fz * dz) / len;
+      if (facingDot >= 0.5) {
+        // The attacker's own combo scale (this fighter's scale()).
+        outcome = opponent.receiveAttack(subDef, char, myPos, scale(), 'special');
+      }
+    }
+    if (outcome === 'miss') emit({ type: 'special-whiff', attack: 'special', hitIndex: i });
+    // 'hit' / 'blocked' / 'dodged' events are emitted by receiveAttack
+    // with the 'special-' tag (see receiveAttack).
+  }
+
   function enterHitstun(duration, heavy) {
-    // A hit cancels anything — including a buffered chain input.
+    // A hit cancels anything — including a buffered chain input and an
+    // in-flight special (its cooldown is already spent).
     bufferedAttack = null;
     bufferTimer = 0;
     attack = null;
+    special = null;
     state = 'hitstun';
     stunTimer = duration;
     stunAnim = heavy ? 'hitHeavy' : 'hit';
@@ -183,6 +288,7 @@ export function createFighterCombat({
   function enterKo() {
     state = 'ko';
     attack = null;
+    special = null;
     bufferedAttack = null;
     setAnim('ko');
     emit({ type: 'ko' });
@@ -196,13 +302,17 @@ export function createFighterCombat({
   // on the defender, so the defender's own scale() would be the wrong
   // fighter's combo (a defender with a big combo would shrink the
   // damage they take, and the attacker's combo would never scale).
-  function receiveAttack(attackDef, attackerChar, attackerPos, attackerComboScale = 1) {
+  // `eventTag` (Phase 5) prefixes the emitted event type: 'hit' etc.
+  // for normals, 'special-hit' / 'special-blocked' / 'special-dodged'
+  // for specials — same outcomes, distinct events for the arena.
+  function receiveAttack(attackDef, attackerChar, attackerPos, attackerComboScale = 1, eventTag = null) {
+    const T = (base) => (eventTag ? `${eventTag}-${base}` : base);
     if (state === 'ko') return 'miss';
     // Dodge i-frames: a clean miss — no damage, no reaction, no combo.
     if (state === 'dodge' && dodgeTimer >= DEFENSE.DODGE_IFRAME_START
       && dodgeTimer <= (dodgeTotal === DEFENSE.EVADE_TIME
         ? DEFENSE.EVADE_IFRAME_END : DEFENSE.DODGE_IFRAME_END)) {
-      emit({ type: 'dodged', attack: attackDef.id });
+      emit({ type: T('dodged'), attack: attackDef.id });
       return 'dodged';
     }
     // Hit test: range only here. The ATTACKER's facing is checked by
@@ -235,7 +345,7 @@ export function createFighterCombat({
         // not the hit pose — syncAnimator re-asserts stunAnim.
         stunAnim = blockLow ? 'blockLow' : 'blockHigh';
         setAnim(stunAnim);
-        emit({ type: 'blocked', attack: attackDef.id, chip, hp });
+        emit({ type: T('blocked'), attack: attackDef.id, chip, hp });
         if (hp <= 0) enterKo();
         return 'blocked';
       }
@@ -253,11 +363,11 @@ export function createFighterCombat({
     }
     if (hp <= 0) {
       enterKo();
-      emit({ type: 'hit', attack: attackDef.id, damage: dmg, hp, ko: true });
+      emit({ type: T('hit'), attack: attackDef.id, damage: dmg, hp, ko: true });
       return 'hit';
     }
     enterHitstun(attackDef.hitstun, heavy);
-    emit({ type: 'hit', attack: attackDef.id, damage: dmg, hp });
+    emit({ type: T('hit'), attack: attackDef.id, damage: dmg, hp });
     return 'hit';
   }
 
@@ -305,9 +415,11 @@ export function createFighterCombat({
       attack.t += dt;
       const { def } = attack;
       const total = def.startup + def.active + def.recovery;
-      // Phase for the animator keyframes (0..1 across the whole attack).
+      // Phase for the animator keyframes (0..1 across the whole attack),
+      // plus seg/segT so the animator drives its per-segment keyframes
+      // (see segFor — Phase 4 passed only `phase`).
       const phase = Math.min(1, attack.t / total);
-      setAnim(def.anim, { phase });
+      setAnim(def.anim, { phase, ...segFor(attack.t, def) });
       if (!attack.hitDone && attack.t >= def.startup) {
         attack.hitDone = true;
         attack.phase = 'active';
@@ -346,6 +458,40 @@ export function createFighterCombat({
       return;
     }
 
+    // Phase 5 — state === 'special'
+    if (state === 'special' && special) {
+      special.t += dt;
+      const { def } = special;
+      const total = def.startup + def.active + def.recovery;
+      const phase = Math.min(1, special.t / total);
+      setAnim('special', { kind: def.animKind, phase, ...segFor(special.t, def) });
+      // Sub-hit schedule: one hit per sub-hit, spread across the active
+      // window (hit i fires at startup + i * active / hits). A slow
+      // device (large dt) may cross several in one tick — the while loop
+      // fires each once, in order, so none is lost or doubled.
+      while (special.hitsFired < def.hits) {
+        const hitAt = def.startup + (special.hitsFired * def.active) / def.hits;
+        if (special.t < hitAt) break;
+        const i = special.hitsFired;
+        special.hitsFired += 1;
+        if (def.archetype === 'energyBlast') {
+          // The projectile owns the hit from here: launch once, then
+          // let it fly (the arena's projectile tick tests the hit).
+          if (!special.launched) {
+            special.launched = true;
+            emit({ type: 'special-launch', attack: 'special' });
+          }
+          break;
+        }
+        // Already KO'd — no more sub-hits (a Barrage must not hit a
+        // fallen fighter, and must not re-KO).
+        if (opponent && opponent.getState() === 'ko') break;
+        fireSpecialHit(i, opponent);
+      }
+      if (special.t >= total) endSpecial();
+      return;
+    }
+
     // state === 'ready'
     if (!input.grounded) return; // no attacks/blocks/dodges mid-air
     if (input.block) {
@@ -380,6 +526,13 @@ export function createFighterCombat({
       emit({ type: isEvade ? 'evade' : 'dodge' });
       return;
     }
+    // Phase 5 — special, checked before the normal attack: a deliberate
+    // special press must not be silently eaten by a simultaneous jab
+    // (both edges are one-shot, so one action wins the tick).
+    if (input.special) {
+      trySpecial();
+      return;
+    }
     if (input.attack && ATTACKS[input.attack]) {
       startAttack(ATTACKS[input.attack]);
     }
@@ -396,7 +549,10 @@ export function createFighterCombat({
   function syncAnimator() {
     if (state === 'attack' && attack) {
       const total = attack.def.startup + attack.def.active + attack.def.recovery;
-      animator.setState(attack.def.anim, { phase: Math.min(1, attack.t / total) });
+      animator.setState(attack.def.anim, { phase: Math.min(1, attack.t / total), ...segFor(attack.t, attack.def) });
+    } else if (state === 'special' && special) {
+      const total = special.def.startup + special.def.active + special.def.recovery;
+      animator.setState('special', { kind: special.def.animKind, phase: Math.min(1, special.t / total), ...segFor(special.t, special.def) });
     } else if (state === 'block') {
       animator.setState(blockLow ? 'blockLow' : 'blockHigh');
     } else if (state === 'dodge') {
@@ -425,18 +581,20 @@ export function createFighterCombat({
       hp = MAX_HP;
       state = 'ready';
       attack = null;
+      special = null;
       bufferedAttack = null;
       bufferTimer = 0;
       stunTimer = 0;
       dodgeTimer = 0;
       dodgeCooldown = 0;
       lastAnim = null;
+      if (specialController) specialController.reset();
       setAnim('idle');
     },
-    // Special Attack is Phase 5 — prepared only: no input is bound to
-    // it anywhere, and this stub exists so a caller can ask honestly.
-    trySpecial() {
-      return { ok: false, reason: 'phase-5' };
-    },
+    // Phase 5 — real special entry point (cooldown-gated, starts the
+    // special on success). The arena drives it through
+    // update(input.special); this export is for callers/tests that need
+    // the honest answer without going through a full tick.
+    trySpecial,
   };
 }

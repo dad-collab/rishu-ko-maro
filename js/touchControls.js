@@ -18,6 +18,8 @@
 // Combat edges share the keyboard's consume-once semantics
 // (consumeCombat()); BLOCK is level (held). Touch combat drives P1
 // only, like the joystick.
+// Phase 5 — SP tap button (signature special, same edge as KeyH):
+// the 7th grid cell, bottom-middle of the 3×3 grid (CSS centers it).
 // - Scrolling is prevented: touch-action none on every control element,
 //   preventDefault on touchstart/touchmove inside the overlay, and the
 //   arena screen gets overscroll-behavior none (CSS, see plan).
@@ -31,7 +33,8 @@ export function createTouchControls(containerEl, { onJump } = {}) {
   const input = { mx: 0, mz: 0, run: false, jump: false };
   // Phase 4 — combat input (parallel to the keyboard's getCombatP1):
   // attack/dodge are edges (consumed by the arena tick), block is level.
-  const combatInput = { attack: null, block: false, dodge: false };
+  // Phase 5 — special is an edge too (SP button, same as KeyH).
+  const combatInput = { attack: null, block: false, dodge: false, special: false };
   let enabled = false;
   let stickId = null;
   let lastX = 0;
@@ -52,6 +55,7 @@ export function createTouchControls(containerEl, { onJump } = {}) {
         <button class="touch-combat" data-attack="heavyKick" type="button" aria-label="Heavy Kick">HK</button>
         <button class="touch-combat touch-block" data-block="1" type="button" aria-label="Block (hold)">BLOCK</button>
         <button class="touch-combat" data-dodge="1" type="button" aria-label="Dodge">DODGE</button>
+        <button class="touch-combat touch-special" data-special="1" type="button" aria-label="Special move">SP</button>
       </div>
       <button class="touch-jump" type="button" aria-label="Jump">JUMP</button>
     </div>`;
@@ -130,6 +134,9 @@ export function createTouchControls(containerEl, { onJump } = {}) {
     } else if (btn.dataset.dodge) {
       combatInput.dodge = true;
       btn.classList.add('active');
+    } else if (btn.dataset.special) {
+      combatInput.special = true;
+      btn.classList.add('active');
     } else if (btn.dataset.block) {
       combatInput.block = true;
       btn.classList.add('active');
@@ -168,6 +175,7 @@ export function createTouchControls(containerEl, { onJump } = {}) {
         combatInput.attack = null;
         combatInput.block = false;
         combatInput.dodge = false;
+        combatInput.special = false;
       }
       root.style.display = enabled && isTouch ? '' : 'none';
     },
@@ -179,6 +187,7 @@ export function createTouchControls(containerEl, { onJump } = {}) {
     },
     // Phase 4 — combat edges, consumed once per frame by the arena tick
     // (same semantics as consumeJump). Block is level, not an edge.
+    // Phase 5 — special is an edge too (SP button / KeyH).
     consumeCombat() {
       const out = {
         attack: combatInput.attack,
@@ -186,9 +195,11 @@ export function createTouchControls(containerEl, { onJump } = {}) {
         blockLow: false, // touch has no back key — high guard only
         dodge: combatInput.dodge,
         evade: false,
+        special: combatInput.special,
       };
       combatInput.attack = null;
       combatInput.dodge = false;
+      combatInput.special = false;
       return out;
     },
     dispose() {

@@ -83,6 +83,12 @@ export const P2_COMBAT_KEYS = {
   blockAlt: 'Semicolon', dodgeAlt: 'KeyM',
 };
 
+// Phase 5 — special keys (verified free: no other binding uses them).
+// P1: H (right hand, next to J/K/U/I). P2: Numpad 6 primary, KeyN alt
+// (same right-hand-cluster fallback pattern as the other P2 keys).
+export const P1_SPECIAL_KEYS = { special: 'KeyH' };
+export const P2_SPECIAL_KEYS = { special: 'Numpad6', specialAlt: 'KeyN' };
+
 export function createKeyboardInput({ onPauseKey } = {}) {
   const held = new Set();
   let jumpP1 = false;
@@ -93,6 +99,9 @@ export function createKeyboardInput({ onPauseKey } = {}) {
   let dodgeP1 = false;
   let attackP2 = null;
   let dodgeP2 = false;
+  // Phase 5 — special edges (same queue/consume rule as the attack edges).
+  let specialP1 = false;
+  let specialP2 = false;
   let enabled = false;
 
   function isFormTarget(e) {
@@ -121,6 +130,7 @@ export function createKeyboardInput({ onPauseKey } = {}) {
     else if (e.code === P1_COMBAT_KEYS.kick) attackP1 = 'kick';
     else if (e.code === P1_COMBAT_KEYS.heavyKick) attackP1 = 'heavyKick';
     if (e.code === P1_COMBAT_KEYS.dodge) dodgeP1 = true;
+    if (e.code === P1_SPECIAL_KEYS.special) specialP1 = true;
     const p2Attack =
       (e.code === P2_COMBAT_KEYS.lightPunch || e.code === P2_COMBAT_KEYS.lightPunchAlt) ? 'lightPunch'
       : (e.code === P2_COMBAT_KEYS.heavyPunch || e.code === P2_COMBAT_KEYS.heavyPunchAlt) ? 'heavyPunch'
@@ -129,6 +139,7 @@ export function createKeyboardInput({ onPauseKey } = {}) {
       : null;
     if (p2Attack) attackP2 = p2Attack;
     if (e.code === P2_COMBAT_KEYS.dodge || e.code === P2_COMBAT_KEYS.dodgeAlt) dodgeP2 = true;
+    if (e.code === P2_SPECIAL_KEYS.special || e.code === P2_SPECIAL_KEYS.specialAlt) specialP2 = true;
   }
   function onKeyUp(e) {
     held.delete(e.code);
@@ -160,8 +171,8 @@ export function createKeyboardInput({ onPauseKey } = {}) {
       if (!enabled) {
         held.clear();
         jumpP1 = false; jumpP2 = false;
-        attackP1 = null; dodgeP1 = false;
-        attackP2 = null; dodgeP2 = false;
+        attackP1 = null; dodgeP1 = false; specialP1 = false;
+        attackP2 = null; dodgeP2 = false; specialP2 = false;
       }
     },
     getP1() {
@@ -181,23 +192,23 @@ export function createKeyboardInput({ onPauseKey } = {}) {
     getCombatP1() {
       const block = held.has(P1_COMBAT_KEYS.block);
       const out = {
-        attack: attackP1, dodge: dodgeP1,
+        attack: attackP1, dodge: dodgeP1, special: specialP1,
         block,
         blockLow: block && held.has(P1_KEYS.back),
         evade: dodgeP1 && held.has(P1_KEYS.back),
       };
-      attackP1 = null; dodgeP1 = false;
+      attackP1 = null; dodgeP1 = false; specialP1 = false;
       return out;
     },
     getCombatP2() {
       const block = held.has(P2_COMBAT_KEYS.block) || held.has(P2_COMBAT_KEYS.blockAlt);
       const out = {
-        attack: attackP2, dodge: dodgeP2,
+        attack: attackP2, dodge: dodgeP2, special: specialP2,
         block,
         blockLow: block && held.has(P2_KEYS.back),
         evade: dodgeP2 && held.has(P2_KEYS.back),
       };
-      attackP2 = null; dodgeP2 = false;
+      attackP2 = null; dodgeP2 = false; specialP2 = false;
       return out;
     },
   };
@@ -340,6 +351,22 @@ export function createFighterController({ model, animator, char, getOpponentPosi
 
   return {
     update,
+    // Phase 5 — round reset: teleport back to a spawn point, grounded,
+    // zero velocity, facing the opponent. The arena calls this in
+    // beginNextRound; the animator state is reset separately (the arena
+    // calls animator.setState('idle') directly — the controller's own
+    // setAnim dedup cannot rescue a 'ko'/'victory' pose).
+    resetTo(x, z) {
+      pos.set(x, ARENA.GROUND_Y, z);
+      vel.set(0, 0, 0);
+      vy = 0;
+      grounded = true;
+      landTimer = 0;
+      lastAnim = 'idle';
+      getOpponentPosition(_toOpp);
+      facing = Math.atan2(_toOpp.x - x, _toOpp.z - z);
+      group.rotation.y = facing;
+    },
     get position() { return pos; },
     get facing() { return facing; },
     get isGrounded() { return grounded; },

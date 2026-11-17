@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="description" content="RISHU.COM — a premium 3D browser fighting game. Phase 4: real combat — punches, kicks, blocks, dodges, combos, live health and KO — six original fighters, live 3D character preview, movement, camera and touch controls." />
+  <meta name="description" content="RISHU.COM — a premium 3D browser fighting game. Phase 5: signature special moves (one per fighter, cooldown-gated) and best-of-3 rounds on top of real combat — punches, kicks, blocks, dodges, combos, live health — six original fighters, live 3D character preview, movement, camera and touch controls." />
   <meta name="theme-color" content="#0E1B2E" />
   <title>RISHU.COM — 3D Fighting Game</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230E1B2E'/%3E%3Cpath d='M20 46V18h18l5 5-5 5H20m13 0 9 18' fill='none' stroke='%23F2EDE3' stroke-width='3.5' stroke-linejoin='miter'/%3E%3Ccircle cx='33' cy='28' r='2.6' fill='%23BC5222'/%3E%3C/svg%3E" />
@@ -324,7 +324,7 @@
               <h3 id="preview-name">—</h3>
               <p id="preview-tagline" class="preview-tagline">—</p>
               <p id="preview-personality" class="preview-personality">—</p>
-              <p class="preview-special">Special move: <b id="preview-special">—</b> <span class="badge-soon">Later phase</span></p>
+              <p class="preview-special">Special move: <b id="preview-special">—</b></p>
               <div id="preview-stats" class="preview-stats"><!-- filled by js/menu.js --></div>
             </div>
           </aside>
@@ -354,10 +354,12 @@
           tournament stadium with a live crowd, banners and a jumbotron — and
           your fighters are rebuilt with proper proportions, faces and jointed
           limbs. Fights play full-screen in theatre mode with a FIGHT banner,
-          and the winner celebrates while the crowd erupts. Combat is unchanged:
-          punches, kicks, blocks, dodges and combos, with live health bars and
-          a KO finish. Damage is fixed per fighter (no random numbers). Special
-          moves and rounds are a later phase. Nothing here is faked.
+          and the winner celebrates while the crowd erupts. Combat is live:
+          punches, kicks, blocks, dodges and combos, with live health bars —
+          plus one signature special move per fighter (<kbd>H</kbd> / Numpad
+          <kbd>6</kbd> / <b>SP</b> button, cooldown-gated) and best-of-3
+          rounds: first to 2 rounds takes the match. Damage is fixed per
+          fighter (no random numbers). Nothing here is faked.
         </div>
         <div class="arena-frame">
           <span class="tick tl" aria-hidden="true"></span>
@@ -402,10 +404,10 @@
   <div class="modal" id="modal-how" role="dialog" aria-modal="true" aria-labelledby="how-title" aria-hidden="true">
     <div class="modal-box">
       <div class="modal-close-row">
-        <h2 id="how-title">How to Play — Phase 4</h2>
+        <h2 id="how-title">How to Play — Phase 5</h2>
         <button class="btn btn-small modal-close" type="button" data-close="modal-how">✕ Close</button>
       </div>
-      <p>Phase 4 adds combat: punches, kicks, blocks, dodges and combos, with live health and a KO finish. These are the controls that <b>actually work right now</b>.</p>
+      <p>Phase 5 adds signature special moves (one per fighter, cooldown-gated) and best-of-3 rounds on top of Phase 4 combat: punches, kicks, blocks, dodges and combos, with live health. These are the controls that <b>actually work right now</b>.</p>
       <h3>Movement (works now)</h3>
       <ul>
         <li><b>Player 1:</b> <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Space</kbd> jump · <kbd>Shift</kbd> run.</li>
@@ -436,15 +438,14 @@
       </ul>
       <h3>Combat (works now)</h3>
       <ul>
-        <li><b>Player 1:</b> <kbd>J</kbd> light punch · <kbd>K</kbd> heavy punch · <kbd>U</kbd> kick · <kbd>I</kbd> heavy kick · <kbd>L</kbd> block (hold; <kbd>L</kbd>+<kbd>S</kbd> low guard) · <kbd>O</kbd> dodge · <kbd>S</kbd>+<kbd>O</kbd> backward evade.</li>
-        <li><b>Player 2 (Two Player Local):</b> Numpad <kbd>1</kbd> light punch · <kbd>2</kbd> heavy punch · <kbd>3</kbd> kick · <kbd>0</kbd> heavy kick · <kbd>Numpad Enter</kbd> block · <kbd>Numpad 5</kbd> dodge. Fallback: <kbd>,</kbd> <kbd>.</kbd> <kbd>/</kbd> <kbd>'</kbd> attacks, <kbd>;</kbd> block, <kbd>M</kbd> dodge.</li>
-        <li><b>Touch:</b> LP / HP / KICK / HK buttons, hold <b>BLOCK</b>, tap <b>DODGE</b> — Player 1 only, beside the joystick.</li>
+        <li><b>Player 1:</b> <kbd>J</kbd> light punch · <kbd>K</kbd> heavy punch · <kbd>U</kbd> kick · <kbd>I</kbd> heavy kick · <kbd>L</kbd> block (hold; <kbd>L</kbd>+<kbd>S</kbd> low guard) · <kbd>O</kbd> dodge · <kbd>S</kbd>+<kbd>O</kbd> backward evade · <kbd>H</kbd> special.</li>
+        <li><b>Player 2 (Two Player Local):</b> Numpad <kbd>1</kbd> light punch · <kbd>2</kbd> heavy punch · <kbd>3</kbd> kick · <kbd>0</kbd> heavy kick · <kbd>Numpad Enter</kbd> block · <kbd>Numpad 5</kbd> dodge · Numpad <kbd>6</kbd> special (alt <kbd>N</kbd>). Fallback: <kbd>,</kbd> <kbd>.</kbd> <kbd>/</kbd> <kbd>'</kbd> attacks, <kbd>;</kbd> block, <kbd>M</kbd> dodge.</li>
+        <li><b>Touch:</b> LP / HP / KICK / HK buttons, hold <b>BLOCK</b>, tap <b>DODGE</b>, tap <b>SP</b> for the special — Player 1 only, beside the joystick.</li>
         <li>Damage is fixed per fighter (strength and defense change it) — no random numbers. Blocking reduces a hit to small chip damage; dodging through an attack avoids it completely. Chain hits quickly to build a combo — the combo counter appears at 2+ hits and damage scales down after the second hit.</li>
-        <li>At 0 HP the match ends in a K.O. — Rematch or Quit from the overlay.</li>
+        <li>At 0 HP a fighter loses the round — first to 2 rounds wins the match, and the WINNER screen offers Rematch or Quit. A special is cooldown-gated (6–12 s by move); a blocked special deals small chip damage and a whiffed special still spends its cooldown.</li>
       </ul>
-      <h3>Not in Phase 4</h3>
+      <h3>Not in Phase 5</h3>
       <ul>
-        <li>Special attacks and rounds — a later phase (Phase 5).</li>
         <li>CPU opponent AI — a later phase (in Player vs Computer the CPU fighter stands in guard for now).</li>
         <li>Online Multiplayer — coming in a later phase.</li>
       </ul>
@@ -489,7 +490,8 @@
       <p><b>Phase 1:</b> main menu, game modes, character selection, How to Play, Settings, fullscreen, loading screen, and the 3D arena preview (Three.js / WebGL).</p>
       <p><b>Phase 2:</b> six original fighters with distinct procedural 3D models, a live rotatable character preview, idle / walk / victory / selection animations, and a confirmed-pick flow that carries into the arena.</p>
       <p><b>Phase 3:</b> movement (walk, run, jump), a fixed side-view fight camera, touch controls, a match timer and pause.</p>
-      <p><b>Phase 4:</b> combat — punches, kicks, blocks, dodges, combos, deterministic damage, live health bars and KO. Special moves and rounds are a later phase.</p>
+      <p><b>Phase 4:</b> combat — punches, kicks, blocks, dodges, combos, deterministic damage, live health bars and KO.</p>
+      <p><b>Phase 5:</b> signature special moves (one per fighter, cooldown-gated — Ember Rush, Storm Barrage, Iron Counter, Shadow Step, Forge Slam, Cyclone Kick) and best-of-3 rounds: first to 2 rounds takes the match, with a WINNER screen.</p>
       <p><b>Visual Upgrade:</b> tournament stadium with a live crowd, banners and jumbotron; rebuilt fighter models (proportions, faces, elbows, knees, hands); theatre-mode full-screen fights with a FIGHT banner; impact effects and a victory celebration. Combat is unchanged.</p>
     </div>
   </div>
@@ -502,10 +504,9 @@
         <button class="btn btn-small modal-close" type="button" data-close="modal-phase2">✕ Close</button>
       </div>
       <ul>
-        <li>Special moves and best-of rounds.</li>
         <li>CPU opponent AI for Player vs Computer.</li>
       </ul>
-      <p>Combat is already in — punches, kicks, blocks, dodges, combos, live health and KO (Phase 4, live now). Online Multiplayer stays Coming Soon until the netcode phase.</p>
+      <p>Combat is already in — punches, kicks, blocks, dodges, combos, live health, signature specials and best-of-3 rounds (Phase 5, live now). Online Multiplayer stays Coming Soon until the netcode phase.</p>
     </div>
   </div>
 

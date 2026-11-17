@@ -1,22 +1,24 @@
-// RISHU.COM — Phase 4 + Tekken fixed camera + Visual Upgrade — arena.js
-// Three.js fighting-arena scene. Phase 4: full combat on top of the
-// Phase 3 movement system — attacks, block, dodge, combos, deterministic
-// damage, live health bars, KO. No rounds / Special / CPU AI yet
-// (Phase 5). Visual Upgrade: tournament stadium (stands, instanced
-// crowd, banners, jumbotron, light rig), pooled particle effects,
-// theatre-mode full-screen fights, FIGHT banner + 1.2 s fight-start
-// freeze, victory moment (winner pose + confetti + crowd surge), and
-// the animator slide fix (measured speed fed to the animators).
+// RISHU.COM — Phase 5 + Tekken fixed camera + Visual Upgrade — arena.js
+// Three.js fighting-arena scene. Phase 5: specials (one signature move
+// per fighter, cooldown-gated) + best-of-3 rounds on top of the Phase 4
+// combat system — deterministic damage bases 5/8/12/14/20, live health
+// bars, WINNER screen. Visual Upgrade: tournament stadium (stands,
+// instanced crowd, banners, jumbotron, light rig), pooled particle
+// effects, theatre-mode full-screen fights, FIGHT banner + 1.2 s
+// fight-start freeze, victory moment (winner pose + confetti + crowd
+// surge), and the animator slide fix (measured speed fed to the
+// animators).
 //
 // Tick order (Phase 4 — see PHASE4-PLAN.md §3; the order is the contract):
 // combat updates BEFORE the movement controllers (hit tests use the
 // pre-move positions), movement is zeroed where combat locks it, then
-// controllers → separation → combat.syncAnimator() (re-asserts combat
-// poses AFTER the controllers, or attacks never show) → animators →
-// HUD sync. There is NO per-frame camera work: the fixed pose is set
-// once in beginMatch() and never touched again. The combat module is
-// the ONLY decider of damage; this file routes inputs and events,
-// never computes a hit itself.
+// controllers → separation → projectile (Phase 5: after separation, so
+// its hit test sees post-separation positions) → combat.syncAnimator()
+// (re-asserts combat poses AFTER the controllers, or attacks never
+// show) → animators → HUD sync. There is NO per-frame camera work: the
+// fixed pose is set once in beginMatch() and never touched again. The
+// combat module is the ONLY decider of damage; this file routes inputs
+// and events, never computes a hit itself.
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -27,9 +29,11 @@ import { createKeyboardInput, createFighterController, resolveSeparation } from 
 import { createFixedCamera } from './fixedCamera.js';
 import { createTouchControls } from './touchControls.js';
 import { createHud } from './hud.js';
-import { createFighterCombat, ATTACKS, DEFENSE, flashFighter } from './combat.js';
+import { createFighterCombat, ATTACKS, flashFighter } from './combat.js';
 import { createComboTracker, comboScale } from './comboSystem.js';
 import { createCombatAudio } from './combatAudio.js';
+import { createSpecialController, specialFor } from './specials.js';
+import { createRoundSystem, ROUND_END_PAUSE } from './rounds.js';
 import { buildStadium } from './stadium.js';
 import { createEffects, FX_COLORS } from './effects.js';
 
@@ -173,6 +177,62 @@ function makeFloorTexture() {
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
   return tex;
+}
+
+// Phase 5 — Energy Blast projectile (Zara's Shadow Step, the ONLY
+// projectile in the game). Adapted from the Phase 5 audit's draft
+// js/fx.js createProjectile — js/fx.js itself was superseded by the
+// visual upgrade's js/effects.js (which has no projectile), so the
+// factory lives here, in the arena, where the scene and the hit test
+// live. One mesh + one PointLight, created in startMatch and disposed
+// in stopMatch. It flies horizontally at chest height (the launch y is
+// fixed at launch); the tick tests a flat XZ radius against the
+// defender, so a jump does not dodge a blast (the brief's blast has
+// no vertical dodge rule — dodging is the i-frame dodge).
+function createProjectile({ scene }) {
+  const geo = new THREE.SphereGeometry(0.16, 16, 12);
+  const mat = new THREE.MeshBasicMaterial({ color: 0x4F7DF3 });
+  const mesh = new THREE.Mesh(geo, mat);
+  const light = new THREE.PointLight(0x4F7DF3, 2, 3);
+  mesh.add(light);
+  mesh.visible = false;
+  scene.add(mesh);
+  let active = false;
+  let travelled = 0;
+  let speed = 8;
+  let maxRange = 6;
+  const dir = new THREE.Vector3(0, 0, -1);
+  return {
+    get active() { return active; },
+    get position() { return mesh.position; },
+    launch(origin, direction, opts = {}) {
+      speed = opts.speed ?? 8;
+      maxRange = opts.range ?? 6;
+      travelled = 0;
+      dir.copy(direction).normalize();
+      mesh.position.set(origin.x, origin.y, origin.z);
+      mesh.visible = true;
+      active = true;
+    },
+    update(dt) {
+      if (!active) return;
+      const step = speed * dt;
+      mesh.position.x += dir.x * step;
+      mesh.position.z += dir.z * step;
+      travelled += step;
+      if (travelled >= maxRange) this.despawn();
+    },
+    despawn() {
+      active = false;
+      mesh.visible = false;
+    },
+    dispose() {
+      scene.remove(mesh);
+      geo.dispose();
+      mat.dispose();
+      light.dispose();
+    },
+  };
 }
 
 // Fighter models live in fighterModels.js (Phase 2) — one procedural
@@ -480,7 +540,7 @@ export function createArena(container, opts = {}) {
   let touch = null;
   let hud = null;
   // Phase 4 — combat state. matchOver: a KO has frozen the match (the
-  // KO overlay owns the screen until Rematch/Quit). hitstop: seconds of
+  // winner overlay owns the screen until Rematch/Quit). hitstop: seconds of
   // tick-level freeze left after a heavy hit. simSec: accumulated
   // SIM time (sum of clamped dt) of the current match — the combo
   // window's clock. It must be sim-time, not the wall clock: every
@@ -503,9 +563,25 @@ export function createArena(container, opts = {}) {
   // the matchOver branch re-asserts if anything overwrites it.
   let introT = 0;
   let victoryFighter = null;
+  // Phase 5 — specials + rounds. specialA/B are the per-fighter
+  // cooldown controllers (created in startMatch, reset per round and
+  // per rematch). rounds owns the best-of-3 state. roundEndTimer counts
+  // the 1.0 s freeze between a round KO and the next round's intro;
+  // roundEndResult holds the recordRoundWin() result for that window.
+  // projectile is Zara's Energy Blast (the only projectile) plus the
+  // def/attacker it needs for its hit test.
+  let specialA = null;
+  let specialB = null;
+  let rounds = null;
+  let roundEndTimer = 0;
+  let roundEndResult = null;
+  let projectile = null;
+  let projectileDef = null;
+  let projectileAttacker = null;
+  let projectileAttackerChar = null;
 
   const ZERO_MOVE = { mx: 0, mz: 0, run: false, jump: false };
-  const ZERO_COMBAT = { attack: null, block: false, blockLow: false, dodge: false, evade: false, grounded: true };
+  const ZERO_COMBAT = { attack: null, block: false, blockLow: false, dodge: false, evade: false, special: false, grounded: true };
 
   function readP1Input() {
     const input = keyboard ? keyboard.getP1() : { mx: 0, mz: 0, run: false, jump: false };
@@ -553,11 +629,12 @@ export function createArena(container, opts = {}) {
     const isP1 = which === 'p1';
     const kb = keyboard
       ? (isP1 ? keyboard.getCombatP1() : keyboard.getCombatP2())
-      : { attack: null, block: false, blockLow: false, dodge: false, evade: false };
+      : { attack: null, block: false, blockLow: false, dodge: false, evade: false, special: false };
     const tc = (isP1 && touch) ? touch.consumeCombat() : null;
     const ctrl = isP1 ? ctrlA : ctrlB;
     return {
       attack: kb.attack || (tc && tc.attack) || null,
+      special: !!(kb.special || (tc && tc.special)),
       block: !!(kb.block || (tc && tc.block)),
       blockLow: !!kb.blockLow,
       dodge: !!(kb.dodge || (tc && tc.dodge)),
@@ -595,21 +672,96 @@ export function createArena(container, opts = {}) {
       effects.confetti({ x: p.x, y: p.y + 2.4, z: p.z });
     }
     if (stadium) stadium.setExcitement(1);
-    if (hud && lastMatch) {
-      const winnerChar = winnerId === 'A' ? lastMatch.charA : lastMatch.charB;
-      hud.showKo(winnerChar ? winnerChar.name : 'Winner',
-        () => { // Rematch: same mode, same pair, fresh match + intro again
-          if (lastMatch) {
-            startMatch(lastMatch.mode, lastMatch.charA, lastMatch.charB);
-            beginMatch();
-          }
-        },
-        () => { if (opts.onQuitMatch) opts.onQuitMatch(); });
+    const winnerChar = winnerId === 'A' ? lastMatch.charA : lastMatch.charB;
+    const loserChar = winnerId === 'A' ? lastMatch.charB : lastMatch.charA;
+    // Phase 5 — rounds: the KO wins the ROUND, not necessarily the
+    // match. recordRoundWin() decides: match over → WINNER screen
+    // (replaces the Phase 4 KO overlay); round over → 1.0 s freeze
+    // with the round banner, then the next round's intro.
+    const result = rounds
+      ? rounds.recordRoundWin(winnerId)
+      : { roundWinner: winnerId, matchWinner: winnerId, score: { A: winnerId === 'A' ? 1 : 0, B: winnerId === 'B' ? 1 : 0 }, matchOver: true };
+    if (result.matchOver) {
+      if (hud && lastMatch) {
+        hud.showWinner(
+          winnerChar ? winnerChar.name : 'Winner',
+          loserChar ? loserChar.name : 'Loser',
+          `${result.score.A}–${result.score.B}`,
+          {
+            onRematch: () => { // Rematch: same mode, same pair, fresh match + intro again
+              if (lastMatch) {
+                startMatch(lastMatch.mode, lastMatch.charA, lastMatch.charB);
+                beginMatch();
+              }
+            },
+            onQuit: () => { if (opts.onQuitMatch) opts.onQuitMatch(); },
+          },
+        );
+      }
+    } else {
+      roundEndResult = result;
+      roundEndTimer = ROUND_END_PAUSE;
+      if (hud) hud.showFightBanner(`${winnerChar ? winnerChar.name : 'Winner'} TAKES ROUND ${rounds.round}`);
     }
   }
 
+  // Phase 5 — next round (after a round KO): the rounds system has
+  // already advanced (round +1, phase 'intro'); this resets the
+  // round-scoped state — HP, positions, cooldowns, combo, timer,
+  // hitstop, projectile — while the round WINS persist in `rounds`.
+  // Then the "ROUND n — FIGHT!" intro runs (1.2 s, input frozen),
+  // exactly like beginMatch's FIGHT intro.
+  function beginNextRound() {
+    if (!rounds || !rounds.beginNextRoundIntro()) return;
+    if (combatA) combatA.reset();
+    if (combatB) combatB.reset();
+    if (combo) combo.reset();
+    if (specialA) specialA.reset();
+    if (specialB) specialB.reset();
+    if (projectile) projectile.despawn();
+    projectileDef = null;
+    projectileAttacker = null;
+    projectileAttackerChar = null;
+    hitstop = 0;
+    simSec = 0;
+    victoryFighter = null;
+    if (ctrlA) ctrlA.resetTo(-1.6, 0);
+    if (ctrlB) ctrlB.resetTo(1.6, 0);
+    fighterA.animator.setState('idle');
+    fighterB.animator.setState('idle');
+    // The HUD sync in the live branch only runs after the intro, so
+    // reset the bars/pips/special slots NOW — otherwise the round-1
+    // KO state (0 HP, pips 1–0) would show through the intro.
+    if (hud && combatA && combatB) {
+      hud.setHealth('p1', combatA.getHp(), combatA.getMaxHp());
+      hud.setHealth('p2', combatB.getHp(), combatB.getMaxHp());
+      hud.setCombo('p1', 0);
+      hud.setCombo('p2', 0);
+      hud.setRounds(rounds.round, rounds.wins.A, rounds.wins.B);
+      hud.setSpecial('p1', { name: specialA ? specialA.move : null, frac: 0, ready: true, remaining: 0 });
+      hud.setSpecial('p2', { name: specialB ? specialB.move : null, frac: 0, ready: true, remaining: 0 });
+    }
+    introT = 1.2;
+    if (hud) hud.showFightBanner(`ROUND ${rounds.round} — FIGHT!`);
+    matchOver = false;
+  }
+
   function handleCombatEvent(id, ev) {
-    const attackerId = id === 'A' ? 'B' : 'A';
+    // Most combat events ('hit', 'blocked', 'dodged', 'special-hit',
+    // 'special-blocked', 'special-dodged') are emitted by the DEFENDER's
+    // combat (receiveAttack), so `id` is the defender and the attacker
+    // is the other fighter. But 'special-start', 'special-launch' and
+    // 'special-whiff' are emitted by the ATTACKER's own combat (its
+    // special state machine), so `id` IS the attacker there. Getting
+    // this wrong made the Energy Blast read the DEFENDER's def
+    // (Kabir's powerPunch — no `projectile` field) and throw
+    // "Cannot read properties of undefined (reading 'speed')", so the
+    // blast never launched (browser E2E: projectileFlies false).
+    const attackerEmitted = ev.type === 'special-start'
+      || ev.type === 'special-launch' || ev.type === 'special-whiff';
+    const attackerId = attackerEmitted ? id : (id === 'A' ? 'B' : 'A');
+    // Phase 5 — the attacker's character (for the special-def lookup).
+    const attackerChar = lastMatch ? (attackerId === 'A' ? lastMatch.charA : lastMatch.charB) : null;
     const defenderModel = (id === 'A' ? fighterA : fighterB).model;
     switch (ev.type) {
       case 'hit': {
@@ -633,15 +785,99 @@ export function createArena(container, opts = {}) {
         }
         if (heavy && stadium) stadium.setExcitement(0.6);
         const def = ATTACKS[ev.attack];
+        // Hitstop is an explicit field on the attack def (Phase 5) —
+        // decoupled from the shake guard (Phase 4 conflated them:
+        // hitstop lived inside the `def.shake > 0` branch).
+        if (def && def.hitstop > 0) hitstop = def.hitstop;
         // Heavy-hit shake (user decision 12:54 IST): subtle, heavy hits
         // only. def.shake is the peak horizontal offset in METRES
         // (0.05 heavyPunch, 0.08 heavyKick); light attacks and kicks
         // carry shake: 0, so this guard selects exactly the two heavies.
+        // The guard and the addShake call are the live shake contract —
+        // do not change them.
         if (def && def.shake > 0) {
-          hitstop = ev.attack === 'heavyKick' ? DEFENSE.HITSTOP_HEAVY_KICK : DEFENSE.HITSTOP_HEAVY;
           if (fixedCamera) fixedCamera.addShake(def.shake);
         }
         if (ev.ko) onKo(attackerId);
+        break;
+      }
+      // Phase 5 — special events. `id` is still the DEFENDER (the
+      // emitter); the attacker is the other fighter, whose special def
+      // comes from specialFor(attackerChar.id).
+      case 'special-start': {
+        // Charge-up burst at the attacker — the special is visibly
+        // starting before its hit lands. The sound plays on the hit
+        // (melee) or the launch (projectile), not here.
+        const attackerModel = (attackerId === 'A' ? fighterA : fighterB).model;
+        if (effects) {
+          const p = attackerModel.group.position;
+          effects.burst({ x: p.x, y: p.y + 1.3, z: p.z }, { color: FX_COLORS.steel, count: 8 });
+        }
+        break;
+      }
+      case 'special-hit': {
+        combo.recordHit(attackerId, 'special', simSec);
+        combo.recordInterrupted(id);
+        const def = attackerChar ? specialFor(attackerChar.id) : null;
+        if (audio && def) audio.play(def.sound);
+        if (flashTimer) { clearTimeout(flashTimer); flashTimer = 0; }
+        flashTimer = flashFighter(defenderModel);
+        // One VFX per archetype (via the def's vfx tag): burstBig =
+        // Ember Rush (ivory burst + orange ring), ring = Cyclone Kick
+        // (steel ring + steel burst), burst = power-punch specials.
+        if (effects && def) {
+          const p = defenderModel.group.position;
+          if (def.vfx === 'burstBig') {
+            effects.burst({ x: p.x, y: p.y + 1.3, z: p.z }, { color: FX_COLORS.ivory, count: 30 });
+            effects.ring({ x: p.x, y: p.y + 1.0, z: p.z }, { color: FX_COLORS.orange });
+          } else if (def.vfx === 'ring') {
+            effects.ring({ x: p.x, y: p.y + 1.0, z: p.z }, { color: FX_COLORS.steel });
+            effects.burst({ x: p.x, y: p.y + 1.3, z: p.z }, { color: FX_COLORS.steel, count: 16 });
+          } else {
+            effects.burst({ x: p.x, y: p.y + 1.3, z: p.z }, { color: FX_COLORS.orange, count: 22 });
+          }
+        }
+        if (stadium) stadium.setExcitement(0.6);
+        // Same decoupled fields as the normal 'hit' case: hitstop from
+        // def.hitstop, shake from def.shake (audited table values only).
+        if (def && def.hitstop > 0) hitstop = def.hitstop;
+        if (def && def.shake > 0) {
+          if (fixedCamera) fixedCamera.addShake(def.shake);
+        }
+        if (ev.ko) onKo(attackerId);
+        break;
+      }
+      case 'special-blocked': {
+        if (audio) audio.play('block');
+        if (ev.hp <= 0) onKo(attackerId);
+        break;
+      }
+      case 'special-whiff': {
+        combo.recordWhiff(attackerId);
+        if (audio) audio.play('whiff');
+        break;
+      }
+      case 'special-dodged':
+        break; // clean miss — no sound, no counter, no reaction
+      case 'special-launch': {
+        // Zara's Shadow Step: the blast leaves the attacker's chest
+        // and flies straight ahead (the attacker's facing at launch).
+        const def = attackerChar ? specialFor(attackerChar.id) : null;
+        if (def && projectile) {
+          const attackerModel = (attackerId === 'A' ? fighterA : fighterB).model;
+          const attackerCtrl = attackerId === 'A' ? ctrlA : ctrlB;
+          const p = attackerModel.group.position;
+          const f = attackerCtrl ? attackerCtrl.facing : 0;
+          projectile.launch(
+            { x: p.x, y: p.y + 1.3, z: p.z },
+            { x: Math.sin(f), y: 0, z: Math.cos(f) },
+            { speed: def.projectile.speed, range: def.projectile.maxRange },
+          );
+          projectileDef = def;
+          projectileAttacker = attackerId;
+          projectileAttackerChar = attackerChar;
+          if (audio) audio.play(def.sound);
+        }
         break;
       }
       case 'blocked': {
@@ -693,8 +929,8 @@ export function createArena(container, opts = {}) {
     // outside a match — menu, modes and select stay portrait-friendly.
     if (!matchBuilt && !matchRunning) return;
     if (window.innerHeight > window.innerWidth) {
-      // A finished match is owned by the KO overlay (Rematch/Quit must
-      // stay tappable in portrait); Rematch re-gates in beginMatch.
+      // A finished match is owned by the winner overlay (Rematch/Quit
+      // must stay tappable in portrait); Rematch re-gates in beginMatch.
       if (matchOver) return;
       // Only claim the pause if the user had not already paused:
       // rotating back must not resume a user pause.
@@ -748,7 +984,7 @@ export function createArena(container, opts = {}) {
 
   function togglePause() {
     if (!matchRunning || !hud) return;
-    // A finished match cannot be paused — the KO overlay owns the box.
+    // A finished match cannot be paused — the winner overlay owns the box.
     if (matchOver) return;
     hud.setPaused(!hud.isPaused());
   }
@@ -806,7 +1042,14 @@ export function createArena(container, opts = {}) {
     // scale callbacks close over it). PvC has no AI: combatB still
     // exists (it reacts — hitstun, block, KO) but the tick feeds it
     // ZERO_COMBAT, so it never initiates.
+    // Phase 5 — specials + rounds. The controllers are created before
+    // the combat objects (they close over them); the rounds system owns
+    // the best-of-3 state for this match. The PvC CPU gets NO specials:
+    // the tick feeds it ZERO_COMBAT, so its special edge never fires.
     combo = createComboTracker();
+    specialA = createSpecialController({ fighterId: charA.id });
+    specialB = createSpecialController({ fighterId: charB.id });
+    rounds = createRoundSystem();
     const makeCombat = (which, char, ctrl, oppCtrl) => createFighterCombat({
       char,
       animator: which === 'A' ? fighterA.animator : fighterB.animator,
@@ -816,10 +1059,14 @@ export function createArena(container, opts = {}) {
       // Damage scale is for the NEXT hit (see comboSystem.js).
       getComboScale: () => combo.getScaleForNext(which),
       onEvent: (ev) => handleCombatEvent(which, ev),
+      specialController: which === 'A' ? specialA : specialB,
+      getSimTime: () => simSec,
     });
     combatA = makeCombat('A', charA, ctrlA, ctrlB);
     combatB = makeCombat('B', charB, ctrlB, ctrlA);
     audio = createCombatAudio({ enabled: opts.sound !== false });
+    // Phase 5 — the Energy Blast projectile (Zara's Shadow Step).
+    projectile = createProjectile({ scene });
 
     // Fixed side-view camera: created here, AFTER the controllers /
     // keyboard / HUD / touch exist (same order as before). The
@@ -835,6 +1082,8 @@ export function createArena(container, opts = {}) {
     matchOver = false;
     hitstop = 0;
     simSec = 0;
+    roundEndTimer = 0;
+    roundEndResult = null;
 
     matchBuilt = true;
     matchRunning = false;
@@ -898,6 +1147,16 @@ export function createArena(container, opts = {}) {
     // first: it touches a model that stopMatch may rebuild next.
     if (flashTimer) { clearTimeout(flashTimer); flashTimer = 0; }
     if (audio) { audio.dispose(); audio = null; }
+    // Phase 5 — specials + rounds teardown.
+    if (projectile) { projectile.dispose(); projectile = null; }
+    projectileDef = null;
+    projectileAttacker = null;
+    projectileAttackerChar = null;
+    specialA = null;
+    specialB = null;
+    rounds = null;
+    roundEndTimer = 0;
+    roundEndResult = null;
     combatA = null;
     combatB = null;
     if (combo) { combo.reset(); combo = null; }
@@ -954,6 +1213,10 @@ export function createArena(container, opts = {}) {
           introT = 0;
           if (hud) hud.hideFightBanner();
           if (hud) hud.start();
+          // Phase 5 — the intro is over: the rounds system moves
+          // 'intro' -> 'fight'. (Round 1 is already 'fight', so this
+          // is a no-op there; beginFight() guards on the phase.)
+          if (rounds) rounds.beginFight();
           if (keyboard) keyboard.setEnabled(true);
           if (touch) touch.setEnabled(true);
         }
@@ -979,6 +1242,41 @@ export function createArena(container, opts = {}) {
         if (ctrlA) ctrlA.update(dt, p1in);
         if (ctrlB) ctrlB.update(dt, p2in);
         if (ctrlA && ctrlB) resolveSeparation(ctrlA, ctrlB);
+        // Phase 5 — Energy Blast projectile: flies after separation
+        // (so its hit test sees post-separation positions), before
+        // syncAnimator (so a projectile hit poses in the same frame).
+        // Frozen during hitstop (it lives in the sim branch) and
+        // despawned on round reset / stopMatch.
+        if (projectile && projectile.active) {
+          const wasActive = projectile.active;
+          projectile.update(dt);
+          if (wasActive && !projectile.active) {
+            // Despawned by max range — a whiff: ends the attacker's
+            // outgoing combo (the blast never connected).
+            if (projectileAttacker && combo) combo.recordWhiff(projectileAttacker);
+          } else if (projectile.active) {
+            if (effects) {
+              const pp = projectile.position;
+              effects.trail({ x: pp.x, y: pp.y, z: pp.z }, { color: FX_COLORS.steel });
+            }
+            const defId = projectileAttacker === 'A' ? 'B' : 'A';
+            const defCombat = defId === 'A' ? combatA : combatB;
+            const defPos = (defId === 'A' ? fighterA : fighterB).model.group.position;
+            const dx = defPos.x - projectile.position.x;
+            const dz = defPos.z - projectile.position.z;
+            if (defCombat && projectileDef && Math.hypot(dx, dz) <= projectileDef.projectile.radius) {
+              const attPos = { x: projectile.position.x, z: projectile.position.z };
+              defCombat.receiveAttack(
+                { ...projectileDef, id: 'special' },
+                projectileAttackerChar,
+                attPos,
+                combo ? combo.getScaleForNext(projectileAttacker) : 1,
+                'special',
+              );
+              projectile.despawn();
+            }
+          }
+        }
         // If a KO landed during this tick's combat updates, onKo has
         // already set the winner 'victory' (and receiveAttack set the
         // loser 'ko' synchronously). syncAnimator would overwrite the
@@ -999,6 +1297,13 @@ export function createArena(container, opts = {}) {
           hud.setHealth('p2', combatB.getHp(), combatB.getMaxHp());
           hud.setCombo('p1', combo.getCount('A'));
           hud.setCombo('p2', combo.getCount('B'));
+          // Phase 5 — special cooldown slots + round pips (every
+          // frame; the HUD methods are change-guarded).
+          if (specialA && specialB) {
+            hud.setSpecial('p1', { name: specialA.move, frac: specialA.cooldownFrac(simSec), ready: specialA.isReady(simSec), remaining: specialA.remaining(simSec) });
+            hud.setSpecial('p2', { name: specialB.move, frac: specialB.cooldownFrac(simSec), ready: specialB.isReady(simSec), remaining: specialB.remaining(simSec) });
+          }
+          if (rounds) hud.setRounds(rounds.round, rounds.wins.A, rounds.wins.B);
         }
         if (stadium) stadium.update(dt, t);
         if (effects) effects.update(dt);
@@ -1021,6 +1326,18 @@ export function createArena(container, opts = {}) {
       fighterB.animator.update(dt, t);
       if (stadium) stadium.update(dt, t);
       if (effects) effects.update(dt);
+      // Phase 5 — round end: the 1.0 s freeze between a round KO and
+      // the next round's intro. When it expires, beginNextRound()
+      // resets the round and re-opens the live branch (matchOver =
+      // false, introT = 1.2). A match-over KO never reaches here
+      // (rounds.phase is 'matchEnd', not 'roundEnd').
+      if (rounds && rounds.phase === 'roundEnd' && roundEndTimer > 0) {
+        roundEndTimer -= dt;
+        if (roundEndTimer <= 0) {
+          roundEndTimer = 0;
+          beginNextRound();
+        }
+      }
     } else if (!paused) {
       // Preview / idle: breathing + guard sway from the animator, free orbit.
       fighterA.animator.update(dt, t);

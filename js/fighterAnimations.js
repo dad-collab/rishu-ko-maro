@@ -254,7 +254,7 @@ export function createFighterAnimator(model, opts = {}) {
   function attackPose(p, k0, k1) {
     const { seg, segT } = combatPhase;
     const t = Math.max(0, Math.min(1, segT));
-    const from = seg === 0 ? p : k0;
+    const from = seg === 0 ? p : seg === 1 ? k0 : k1;
     const to = seg === 0 ? k0 : seg === 1 ? k1 : p;
     for (const key of Object.keys(p)) {
       const a = from[key] !== undefined ? from[key] : p[key];

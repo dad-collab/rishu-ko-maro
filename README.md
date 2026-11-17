@@ -1,4 +1,4 @@
-# RISHU.COM — Phase 4
+# RISHU.COM — Phase 5
 
 Premium 3D browser-based fighting game. **Original branding, UI, characters and visuals only** — nothing copied from FightKaro or any other game.
 
@@ -35,27 +35,34 @@ Premium 3D browser-based fighting game. **Original branding, UI, characters and 
 ## What is in Phase 4
 
 - **Attacks** — Light Punch (`J`), Heavy Punch (`K`), Kick (`U`), Heavy Kick (`I`), each with real 3D animation (startup / active / recovery), duration, cooldown, range and hitstun. P2 (Two Player Local): Numpad `1` / `2` / `3` / `0` (fallback `,` / `.` / `/` / `'`), all in one `P2_COMBAT_KEYS` config object in `js/movement.js`. No air attacks, no spam: an attack cannot start during an incompatible animation, and holding an attack key queues one attack only.
-- **Damage (deterministic, no random numbers)** — `round(base × (0.8 + 0.04·strength) × (1.15 − 0.03·defense) × comboScale)`, reach scaled by the attacker's Range stat (`reach = base × (0.9 + 0.025·range)`). Worked examples (attacker → defender): Rishu→Kabir 4 / 8 / 6 / 10, Dev→Zara 5 / 10 / 7 / 13, Ayaan→Meera 5 / 9 / 7 / 12, Zara→Dev 4 / 8 / 6 / 10 (Light / Heavy Punch / Kick / Heavy Kick). One hit per attack by construction: a single hit test on the active window's first frame, a facing guard, and a `hitDone` flag.
+- **Damage (deterministic, no random numbers)** — `round(base × (0.8 + 0.04·strength) × (1.15 − 0.03·defense) × comboScale)`, reach scaled by the attacker's Range stat (`reach = base × (0.9 + 0.025·range)`). Phase 5 bases: Light 5, Kick 8, Heavy Punch 12, Heavy Kick 14, Special 20. Worked examples (attacker → defender): Rishu→Kabir 5 / 11 / 8 / 13, Dev→Zara 6 / 14 / 10 / 17, Ayaan→Meera 6 / 14 / 9 / 16, Zara→Dev 5 / 11 / 8 / 13 (Light / Heavy Punch / Kick / Heavy Kick). One hit per attack by construction: a single hit test on the active window's first frame, a facing guard, and a `hitDone` flag.
 - **Defense** — Block (`L`, hold): high guard blocks high + mid, low guard (`L`+`S`) blocks mid + low; blocked hits deal small chip damage and push the defender back. Dodge (`O`): a 0.28 s dash with i-frames 0.05–0.25 s; Backward Evade (`S`+`O`): 1.8 m straight back, i-frames 0.05–0.30 s. P2: Numpad Enter block, Numpad 5 dodge (fallback `;` / `M`).
 - **Combos** — a 1.2 s window measured in **sim-time** (the arena's accumulated dt), not wall-clock time, so the window cannot expire between landed hits on a slow device — three attacks are 1.02 s of sim, which is over 1.2 s of wall time below ~15 fps. A counter appears at 2+ hits, damage scaling ×1.0 (hits 1–2), ×0.9 (3–4), ×0.8 (5+), chain buffering (0.35 s, one buffered attack, cleared on hit), and interruption (a whiff, a dodge, or the opponent blocking breaks the chain).
 - **Hit detection & reactions** — range-only hits (no hits from unrealistic distance), hitstun that locks the defender's movement (0.22–0.50 s by attack), knockback on heavy attacks, hit-reaction animations (`hit` / `hitHeavy`), and a KO fall at 0 HP.
-- **Effects** — subtle hit flash on the defender, hitstop freeze (0.04 s heavy punch, 0.06 s heavy kick), and punch/kick/block/dodge/KO sounds synthesised with WebAudio (`js/combatAudio.js`, zero audio files) that respect the Settings sound toggle and never throw. (No camera shake: the fixed camera never moves.)
-- **Health & KO** — 100 HP per fighter, live HUD bars (burnt-orange low-health state at ≤ 25 HP), KO at 0 HP with a Rematch / Quit overlay reusing the pause box; Rematch restarts the same mode and fighters immediately — no intro. Single-round KO — no rounds yet.
-- **Touch combat** — LP / HP / KICK / HK tap buttons, hold-to-block BLOCK, tap DODGE, in a 3×2 grid beside JUMP (P1 only, ≥ 44 px targets). Touch block is high guard only (no low guard on touch).
+- **Effects** — subtle hit flash on the defender, hitstop freeze (0.04 s heavy punch, 0.06 s heavy kick), and punch/kick/block/dodge/KO sounds synthesised with WebAudio (`js/combatAudio.js`, zero audio files) that respect the Settings sound toggle and never throw. (Camera: fixed pose, with a subtle shake on heavy hits only — ≤ 0.08 m, ≤ 0.35 s, returns to the exact pose.)
+- **Health & rounds** — 100 HP per fighter, live HUD bars (burnt-orange low-health state at ≤ 25 HP). A KO at 0 HP wins the ROUND (best-of-3, first to 2 takes the match): the round KO freezes 1.0 s with a round banner, then HP / positions / cooldowns / combo / timer reset and a "ROUND n — FIGHT!" intro runs (1.2 s, input frozen). The match win shows a WINNER screen reusing the pause box; Rematch restarts the same mode and fighters immediately.
+- **Touch combat** — LP / HP / KICK / HK tap buttons, hold-to-block BLOCK, tap DODGE, tap SP for the special, in a 3×3 grid beside JUMP (P1 only, ≥ 44 px targets). Touch block is high guard only (no low guard on touch).
 - **Integration rule (the setFighters lesson)** — the arena tick calls `combat.syncAnimator()` AFTER the movement controllers and BEFORE `animator.update`, or the controllers would overwrite attack / hit / block poses with idle in the same frame. Combat updates run BEFORE the controllers so hit tests use pre-move positions.
+
+## What is in Phase 5
+
+- **Specials (one signature move per fighter, cooldown-gated, no meter)** — Rishu **Ember Rush** (Ultimate, 12 s), Ayaan **Storm Barrage** (Power Punch, 3 real hits 7+7+6, 6 s — only the final hit knocks back, so all three connect), Kabir **Iron Counter** (Power Punch, knockback 0.55, 6 s), Zara **Shadow Step** (Energy Blast — the ONLY projectile: 8 m/s, 6 m, radius 0.9 m, 8 s), Dev **Forge Slam** (Power Punch, knockback 0.60, 6 s), Meera **Cyclone Kick** (Special Kick, range 2.8 m, 7 s). Inputs: P1 `H`, P2 Numpad `6` (alt `N`), touch **SP**. The PvC CPU gets NO specials. Specials count in the combo (and scale with it — a special as hit #3 deals ×0.9); no chaining through a special. A blocked single-hit special deals chip 2 (Barrage: ~1 per blocked sub-hit); a whiffed special still spends its cooldown. Cooldowns run on sim-time and reset per round and per rematch.
+- **Damage** — flat bases × the existing stat formula: Light 5, Kick 8, Heavy Punch 12, Heavy Kick 14, Special 20. Equal-stats pair lands exactly 5 / 8 / 12 / 14 / 20; Rishu→Kabir lands 5 / 8 / 11 / 13 / 19; the special roster spread is 18–24. Block reduces damage; one hit per attack (no double-register); damage only when the attack actually connects.
+- **Rounds** — best-of-3, first to 2. Round KO → 1.0 s freeze → round banner → reset (HP / positions / cooldowns / combo / timer) → "ROUND n — FIGHT!" intro 1.2 s (input frozen). Timer resets per round (count-up, no timeout). The WINNER screen reuses the pause/KO overlay box (new 'winner' mode); the Phase 4 `showKo` is retired. Double KO is impossible by construction (only the defender takes damage).
+- **HUD** — names stacked ABOVE health bars, HP with `%` suffix, special slots (move name + depleting cooldown bar + READY state), round pips + "ROUND n" label, count-up timer.
+- **Defense** — recovery is now a distinct pose: the combat module drives seg/segT (startup / active / recovery) into the animator for attacks AND specials, so the recovery keyframes actually render (Phase 4 passed only `phase`, so poses sat at guard — fixed in `js/combat.js` + `js/fighterAnimations.js`, including the seg-2 blend-from fix: seg 2 blends k1 → guard, not k0 → guard). No attacks during incompatible animations; block/dodge stay smooth and responsive. Hitstop is an explicit per-attack field now (decoupled from the live heavy-hit shake guard — the shake call site is untouched).
+- **Sounds** — four new WebAudio profiles: `specialPunch` (low thud), `specialKick` (whoosh + thud), `energyBlast` (sine sweep 300 → 1200 Hz + noise), `ultimate` (layered deep thud, 0.35 s).
 
 ## What is in the Visual Upgrade
 
 - **Tournament stadium (`js/stadium.js`)** — three tiered stand rings (lathe-built, one mesh per ring), 500 instanced spectators on desktop / 250 on mobile (2 `InstancedMesh` draws, subset bob every ~100 ms, no shadows), 4 canvas banners, an emissive jumbotron (static canvas texture, redrawn per matchup), a light truss with 4 additive light cones and a warm wash over the far crowd. Stadium ≤ 25 draw calls; total ≤ 150 desktop / ≤ 110 mobile. Ring geometry, clamp r=4.6, ropes and spawn points are untouched.
 - **Character rig v2 (`js/fighterModels.js`)** — elbow + knee pivots, hands (glove + thumb), neck, faces (brow, nose, mouth, ears), chest/abdomen torso split and richer clothing. Proportions fixed: head Ø 0.47 → 0.32 (~13.5% of height), hip pivot 0.82 → 1.15 (legs ~50% of height). Total height UNCHANGED ~2.35 so the fixed-camera framing holds. All 6 identities kept.
-- **Animations (`js/fighterAnimations.js`)** — the slide fix: the walk phase rate now comes from the controller's measured speed (`setSpeed()`, fed by the arena tick), the swing scales with speed and the foot plants at full forward reach. Punches extend the elbow, kicks chamber the knee, blocks cross the forearms, hits step back instead of sliding, dodges push off. Special pose slots (`special` state, kinds punch / blast / kick / ultimate) are ready for Phase 5 to drive.
+- **Animations (`js/fighterAnimations.js`)** — the slide fix: the walk phase rate now comes from the controller's measured speed (`setSpeed()`, fed by the arena tick), the swing scales with speed and the foot plants at full forward reach. Punches extend the elbow, kicks chamber the knee, blocks cross the forearms, hits step back instead of sliding, dodges push off. Phase 5 drives the special pose slots (`special` state, kinds punch / blast / kick / ultimate) with seg/segT per-segment keyframes.
 - **Presentation** — theatre mode (the arena fills the viewport during a match, nav/footer hidden), the HUD overlays the canvas (names above the bars, bars draining toward the centre timer badge, HP as `100%`), a FIGHT banner + 1.2 s fight-start freeze (input + timer held), and a victory moment on KO (winner `victory` pose + confetti + crowd surge). `js/effects.js` is the ONE shared effects module (pooled particles: bursts, rings, trails, confetti) — Phase 5 reuses it unchanged.
 - **Camera** — unchanged and still fixed: no auto-distance, no zoom — just a subtle shake on heavy hits only (≤ 0.08 m, ≤ 0.35 s, returns to the exact pose). The fixed frustum (half-width 5.25 m) already frames both fighters at every legal separation.
 
-## What is NOT in Phase 4 (honest list)
+## What is NOT in Phase 5 (honest list)
 
-- Special attacks — hooks/stub only (`trySpecial()` returns `{ ok: false, reason: 'phase-5' }`), no input bound, no UI
-- Rounds — single-round KO only; no best-of, no round timer
 - CPU AI — later phase (in Player vs Computer the CPU fighter stands in guard and only reacts)
 - Online Multiplayer — later phase, marked Coming Soon in the UI
 - No visual browser confirmation in this VM (no Chromium/Playwright) — open `http://localhost:8000` in a real browser to confirm combat feel, hit reactions and 60 FPS.
@@ -66,7 +73,7 @@ Plain HTML / CSS / JS — no build step, no framework.
 
 - Three.js `0.160.0` via CDN ES modules (import map in `index.html`)
 - WebGL rendering, `OrbitControls` for the arena preview camera; the fight uses a fixed orthographic side-view camera (`js/fixedCamera.js`)
-- Modular files: `js/main.js` (boot + loading), `js/arena.js` (Three.js arena scene + match lifecycle), `js/menu.js` (screens/modals/settings/character select), `js/characters.js` (fighter data + stats), `js/fighterModels.js` (procedural 3D models), `js/fighterAnimations.js` (animation state machine), `js/characterPreview.js` (live 3D preview renderer), `js/movement.js` (keyboard input + fighter controller), `js/fixedCamera.js` (fixed side-view fight camera), `js/touchControls.js` (virtual joystick + jump), `js/hud.js` (match HUD + pause), `js/combat.js` (Phase 4 — combat state machine, damage, hit detection), `js/comboSystem.js` (Phase 4 — combo tracking + scaling), `js/combatAudio.js` (Phase 4 — WebAudio synth sound effects)
+- Modular files: `js/main.js` (boot + loading), `js/arena.js` (Three.js arena scene + match lifecycle), `js/menu.js` (screens/modals/settings/character select), `js/characters.js` (fighter data + stats), `js/fighterModels.js` (procedural 3D models), `js/fighterAnimations.js` (animation state machine), `js/characterPreview.js` (live 3D preview renderer), `js/movement.js` (keyboard input + fighter controller), `js/fixedCamera.js` (fixed side-view fight camera), `js/touchControls.js` (virtual joystick + jump), `js/hud.js` (match HUD + pause), `js/combat.js` (Phase 4–5 — combat state machine, damage, hit detection, specials), `js/comboSystem.js` (Phase 4 — combo tracking + scaling), `js/combatAudio.js` (Phase 4–5 — WebAudio synth sound effects), `js/specials.js` (Phase 5 — special definitions + cooldowns), `js/rounds.js` (Phase 5 — best-of-3 rounds)
 
 ## Project structure
 
@@ -81,9 +88,11 @@ rishu-com/
   js/fighterModels.js       # Phase 2 — procedural fighter models
   js/fighterAnimations.js   # Phase 2 — idle / walk / victory / select (+ Phase 4 combat poses)
   js/characterPreview.js    # Phase 2 — live 3D preview renderer
-  js/combat.js              # Phase 4 — combat state machine, damage, hit detection
+  js/combat.js              # Phase 4–5 — combat state machine, damage, hit detection, specials
   js/comboSystem.js         # Phase 4 — combo tracking + damage scaling
-  js/combatAudio.js         # Phase 4 — WebAudio synth sound effects
+  js/combatAudio.js         # Phase 4–5 — WebAudio synth sound effects
+  js/specials.js            # Phase 5 — special definitions + cooldown state
+  js/rounds.js              # Phase 5 — best-of-3 round system
   assets/            # reserved for future art; logo is inline SVG (no external images)
   README.md
 ```

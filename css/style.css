@@ -1197,6 +1197,19 @@ main { flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 2
 /* Phase 4 — low health (<= 25 HP): fill and label go burnt orange. */
 .hud-health--low i b { background: var(--brand); }
 .hud-health--low .hud-health-label, .hud-health--low .hud-hp { color: var(--brand); font-weight: 700; }
+/* Phase 5 — special cooldown slot (under the health bar): move name +
+   a thin depleting bar + READY state. The bar is the cooldown
+   remaining (full = just used, empty = ready); READY goes brand. The
+   fill anchors toward the centre, like the health bar above it. */
+.hud-special { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.hud-special-name { font-size: 10px; letter-spacing: 0.08em; color: var(--ivory-050); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 4px rgba(10, 20, 36, 0.8); }
+.hud-special-bar { display: block; position: relative; overflow: hidden; flex: 1; height: 6px; border-radius: 999px; background: var(--steel); border: 1px solid var(--silver); min-width: 24px; }
+.hud-special-bar b { position: absolute; top: 0; bottom: 0; left: 0; width: 0; display: block; border-radius: 999px; background: var(--brand); }
+.hud-side--p1 .hud-special-bar b { right: 0; left: auto; }
+.hud-side--p2 .hud-special-bar b { left: 0; }
+.hud-special-state { font-family: var(--font-display); font-size: 10px; color: var(--ivory-050); white-space: nowrap; font-variant-numeric: tabular-nums; text-shadow: 0 1px 4px rgba(10, 20, 36, 0.8); }
+.hud-special--ready .hud-special-state { color: var(--brand); }
+.hud-special--ready .hud-special-bar b { background: var(--ivory-050); }
 /* Phase 4 — combo counter (shown at 2+ hits by hud.setCombo). */
 .hud-combo {
   font-family: var(--font-display); font-size: 12px; color: var(--brand);
@@ -1212,10 +1225,18 @@ main { flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 2
   border-radius: 10px; padding: 2px 10px;
 }
 .hud-timer small { font-family: var(--font-body); font-size: 10px; letter-spacing: 0.12em; color: var(--ivory-050); }
+/* Phase 5 — round pips: "ROUND n" + two pips per side (first to 2).
+   A won pip fills brand. */
+.hud-rounds { display: flex; align-items: center; gap: 6px; }
+.hud-round-label { font-family: var(--font-display); font-size: 11px; letter-spacing: 0.08em; color: var(--ivory-050); text-shadow: 0 1px 4px rgba(10, 20, 36, 0.8); }
+.hud-pips { display: flex; align-items: center; gap: 3px; }
+.hud-pips i { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--silver); background: transparent; display: block; }
+.hud-pips i.hud-pip--won { background: var(--brand); border-color: var(--brand); }
+.hud-pips b { color: var(--ivory-050); font-size: 12px; line-height: 1; }
 
 /* FIGHT banner (visual upgrade): centre-screen, Archivo Black, pops
    in on match start. Driven by hud.showFightBanner(text); Phase 5
-   will drive round text through the same component. */
+   drives round text through the same component ("ROUND 2 — FIGHT!"). */
 .fight-banner {
   position: absolute; left: 0; right: 0; top: 38%;
   z-index: 26; pointer-events: none;
@@ -1247,6 +1268,8 @@ main { flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 2
 .hud-pause-box h2 { font-family: var(--font-display); margin: 0 0 8px; }
 .hud-pause-box p { color: var(--ink-soft); margin: 0 0 18px; }
 .hud-pause-box .btn { display: block; width: 100%; margin-top: 10px; }
+/* Phase 5 — winner overlay: the title goes brand orange. */
+.hud-pause-box--winner h2 { color: var(--brand); }
 
 /* ---------- Visual Upgrade: theatre mode ----------
    During a match, body.fighting turns the arena screen into the
@@ -1309,6 +1332,9 @@ body.fighting #arena-wrap {
   display: flex; align-items: center; justify-content: center;
 }
 .touch-combat:active, .touch-combat.active { background: var(--brand); }
+/* Phase 5 — SP button: the 7th grid cell, bottom-middle of the 3x3
+   grid, brand-outlined so the special stands out from the attacks. */
+.touch-combat.touch-special { grid-column: 2; border-color: var(--brand); color: var(--brand); }
 .touch-jump {
   width: 84px; height: 84px; border-radius: 50%;
   background: var(--brand); color: var(--ivory-050);

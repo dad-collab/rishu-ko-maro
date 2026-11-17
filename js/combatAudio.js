@@ -24,6 +24,16 @@ const PROFILES = {
   whiff: { type: 'whoosh', freq: 1200, dur: 0.14, gain: 0.25, noise: 0.9 },
   dodge: { type: 'whoosh', freq: 800, dur: 0.18, gain: 0.2, noise: 0.8 },
   ko: { type: 'thud', freq: 60, dur: 0.35, gain: 0.9, noise: 0.7 },
+  // Phase 5 — one sound per special archetype (specials.js `sound`).
+  // specialPunch: low thud (power-punch specials, incl. Barrage).
+  // specialKick: whoosh + thud (the thud type already layers noise).
+  // energyBlast: rising sine sweep 300 → 1200 Hz + noise (new 'sweep'
+  // type). ultimate: layered deep thud + shimmer (0.35 s, the longest
+  // special sound — the 12 s cooldown earns the biggest noise).
+  specialPunch: { type: 'thud', freq: 70, dur: 0.25, gain: 0.7, noise: 0.5 },
+  specialKick: { type: 'thud', freq: 120, dur: 0.2, gain: 0.75, noise: 0.7 },
+  energyBlast: { type: 'sweep', freq: 300, freq2: 1200, dur: 0.3, gain: 0.55, noise: 0.5 },
+  ultimate: { type: 'thud', freq: 100, dur: 0.35, gain: 0.85, noise: 0.6 },
 };
 
 export function createCombatAudio({ enabled = true } = {}) {
@@ -80,6 +90,22 @@ export function createCombatAudio({ enabled = true } = {}) {
     src.start(t0);
   }
 
+  function playSweep(p) {
+    // Rising sine sweep (the "energy charge") + a noise burst.
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const oscGain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(p.freq, t0);
+    osc.frequency.linearRampToValueAtTime(p.freq2 || p.freq * 2, t0 + p.dur);
+    oscGain.gain.setValueAtTime(p.gain, t0);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, t0 + p.dur);
+    osc.connect(oscGain).connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + p.dur + 0.02);
+    playNoise(p, t0);
+  }
+
   return {
     play(name) {
       if (!on) return;
@@ -89,6 +115,7 @@ export function createCombatAudio({ enabled = true } = {}) {
       if (ctx.state === 'suspended') ctx.resume().catch(() => {});
       try {
         if (p.type === 'whoosh') playNoise(p, ctx.currentTime);
+        else if (p.type === 'sweep') playSweep(p);
         else playThud(p);
       } catch (e) {
         // Audio must never break a match.
