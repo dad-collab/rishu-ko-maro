@@ -867,6 +867,15 @@ main { flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 2
 .pick-bar .slots b { font-family: var(--font-display); font-weight: 400; color: var(--ink); letter-spacing: 0.02em; }
 #pick-hint { width: 100%; margin: 0; color: var(--ink-soft); font-size: 0.92rem; }
 
+/* Phase 6 — CPU difficulty row (PvC only; hidden in 2P Local) */
+.ai-row { width: 100%; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.ai-row[hidden] { display: none; }
+.ai-row-label { font-size: 0.92rem; color: var(--ink-soft); font-weight: 600; }
+.ai-difficulty { display: flex; gap: 8px; flex-wrap: wrap; }
+.ai-diff-btn { min-height: 44px; min-width: 76px; }
+.ai-diff-btn--active { background: var(--brand); border-color: var(--brand); color: var(--ivory-050); }
+.ai-diff-btn--active:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+
 /* ---------- Arena screen ---------- */
 .arena-band {
   background: var(--ivory-100);
@@ -1112,6 +1121,10 @@ main { flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 2
   .pick-bar .slots { order: -1; font-size: 0.85rem; }
   .pick-bar .btn-primary { width: 100%; min-height: 52px; }
   .pick-bar .text-link { text-align: center; }
+  /* Phase 6 — difficulty buttons spread full-width on the fixed bar. */
+  .ai-row { gap: 8px; }
+  .ai-difficulty { width: 100%; }
+  .ai-diff-btn { flex: 1; min-width: 0; }
 
   #arena-wrap { height: 56vh; min-height: 300px; }
   .arena-actions { flex-direction: column; align-items: stretch; gap: 8px; }
@@ -1233,6 +1246,9 @@ main { flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 2
 .hud-pips i { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--silver); background: transparent; display: block; }
 .hud-pips i.hud-pip--won { background: var(--brand); border-color: var(--brand); }
 .hud-pips b { color: var(--ivory-050); font-size: 12px; line-height: 1; }
+/* Phase 6 — CPU difficulty label under the timer (PvC only). */
+.hud-ai-label { font-family: var(--font-body); font-size: 10px; letter-spacing: 0.14em; color: var(--paper-soft); text-align: center; }
+.hud-ai-label[hidden] { display: none; }
 
 /* FIGHT banner (visual upgrade): centre-screen, Archivo Black, pops
    in on match start. Driven by hud.showFightBanner(text); Phase 5

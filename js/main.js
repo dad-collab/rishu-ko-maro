@@ -71,8 +71,10 @@ async function boot() {
     settings,
     onQualityChange: (q) => { if (arena) arena.setQuality(q); },
     onRequestFullscreen: requestFullscreen,
-    onEnterArena: (mode, charA, charB) => {
-      if (arena) arena.startMatch(mode, charA, charB);
+    onEnterArena: (mode, charA, charB, opts) => {
+      // Phase 6 — the 4th argument carries the match options
+      // ({ difficulty }) from character select through to the arena.
+      if (arena) arena.startMatch(mode, charA, charB, opts);
     },
     onArenaShown: () => {
       if (arena) {
@@ -109,6 +111,13 @@ async function boot() {
       onQuitMatch: () => {
         if (arena) arena.stopMatch();
         if (menu) menu.show('modes');
+      },
+      // Phase 6 — winner overlay "Change difficulty": stop the match,
+      // then open character select in PvC mode (difficulty is
+      // pre-selected from storage there).
+      onChangeDifficulty: () => {
+        if (arena) arena.stopMatch();
+        if (menu) menu.openCharacterSelect('pvc');
       },
     });
   } catch (e) {

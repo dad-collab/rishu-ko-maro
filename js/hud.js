@@ -97,6 +97,7 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
           <span class="hud-round-label" data-hud="round-label">ROUND 1</span>
           <span class="hud-pips" data-hud="pips"><i data-hud="pip-a1"></i><i data-hud="pip-a2"></i><b aria-hidden="true">·</b><i data-hud="pip-b1"></i><i data-hud="pip-b2"></i></span>
         </div>
+        <div class="hud-ai-label" data-hud="ai-label" hidden>CPU · MEDIUM</div>
         <button class="btn btn-small" data-hud="pause" type="button" aria-label="Pause match">⏸ Pause</button>
       </div>
       <div class="hud-side hud-side--p2">
@@ -124,6 +125,7 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
         <p data-hud="pause-hint">Movement and the timer are frozen.</p>
         <button class="btn btn-primary" data-hud="resume" type="button">Resume</button>
         <button class="btn btn-primary" data-hud="rematch" type="button" hidden>Rematch</button>
+        <button class="btn" data-hud="change-difficulty" type="button" hidden>Change difficulty</button>
         <button class="btn" data-hud="quit" type="button">Quit to Game Modes</button>
       </div>
     </div>`;
@@ -280,8 +282,18 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
     }
   }
 
-  // Phase 5 — round pips + "ROUND n" label. winsA/winsB are the round
-  // wins so far (first to 2 takes the match).
+  // Phase 6 — CPU difficulty label under the timer (PvC only).
+  // Change-guarded like setHealth; the arena calls it once per match.
+  let aiLabelValue = null;
+  function setAiLabel(difficulty) {
+    const label = difficulty ? `CPU · ${String(difficulty).toUpperCase()}` : null;
+    if (label === aiLabelValue) return;
+    aiLabelValue = label;
+    const el = $('ai-label');
+    if (!el) return;
+    el.hidden = !label;
+    if (label) el.textContent = label;
+  }
   const roundState = { round: 0, winsA: -1, winsB: -1 };
   function setRounds(round, winsA, winsB) {
     if (round !== roundState.round) {
@@ -299,13 +311,21 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
     }
   }
 
-  // Phase 5 — WINNER overlay: same box as pause, different content.
+  // Phase 6 — WINNER overlay: same box as pause, different content.
   // Replaces the Phase 4 KO overlay (showKo is retired — a KO wins a
   // ROUND now, and only the match win shows this screen).
+  // In PvC the title is YOU WIN / YOU LOSE (winnerSide 'A' is the
+  // player); in 2P it stays "{name} — WINNER". The "Change difficulty"
+  // button shows only in PvC winner mode (handlers.onChangeDifficulty).
   function showWinner(winnerName, loserName, score, handlers = {}) {
-    overlayHandlers = { onRematch: handlers.onRematch, onQuit: handlers.onQuit };
+    overlayHandlers = { onRematch: handlers.onRematch, onQuit: handlers.onQuit, onChangeDifficulty: handlers.onChangeDifficulty };
     const title = $('overlay-title');
-    if (title) title.textContent = `${winnerName} — WINNER`;
+    const pvc = handlers.mode === 'pvc';
+    if (title) {
+      title.textContent = pvc
+        ? (handlers.winnerSide === 'A' ? 'YOU WIN' : 'YOU LOSE')
+        : `${winnerName} — WINNER`;
+    }
     const hint = $('pause-hint');
     if (hint) hint.textContent = `${loserName} — DEFEATED · Score ${score}`;
     const box = root.querySelector('.hud-pause-box');
@@ -314,6 +334,8 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
     if (resumeBtn) resumeBtn.hidden = true;
     const rematchBtn = $('rematch');
     if (rematchBtn) rematchBtn.hidden = false;
+    const changeBtn = $('change-difficulty');
+    if (changeBtn) changeBtn.hidden = !pvc;
     showOverlay('winner');
   }
 
@@ -350,6 +372,8 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
   if (resumeBtn) resumeBtn.addEventListener('click', () => setPaused(false));
   const rematchBtn = $('rematch');
   if (rematchBtn) rematchBtn.addEventListener('click', () => { if (overlayHandlers && overlayHandlers.onRematch) overlayHandlers.onRematch(); });
+  const changeDifficultyBtn = $('change-difficulty');
+  if (changeDifficultyBtn) changeDifficultyBtn.addEventListener('click', () => { if (overlayHandlers && overlayHandlers.onChangeDifficulty) overlayHandlers.onChangeDifficulty(); });
   const quitBtn = $('quit');
   if (quitBtn) quitBtn.addEventListener('click', () => {
     if (overlayMode === 'winner' && overlayHandlers && overlayHandlers.onQuit) overlayHandlers.onQuit();
@@ -376,6 +400,8 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
       if (rematchBtn) rematchBtn.hidden = true;
       const resumeBtn = $('resume');
       if (resumeBtn) resumeBtn.hidden = false;
+      const changeBtn = $('change-difficulty');
+      if (changeBtn) changeBtn.hidden = true;
       setHealth('p1', 100, 100);
       setHealth('p2', 100, 100);
       setCombo('p1', 0);
@@ -402,6 +428,7 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
     setCombo,
     setSpecial,
     setRounds,
+    setAiLabel,
     showWinner,
     hideWinner,
     showFightBanner,

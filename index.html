@@ -114,7 +114,7 @@
               <p>Pick your fighter and face a CPU opponent in the arena.</p>
               <ul class="mode-points">
                 <li>Your pick, your rules</li>
-                <li>CPU opponent picked at random</li>
+                <li>Pick your CPU opponent and difficulty</li>
                 <li>Move, run and jump in the arena with your fighters</li>
               </ul>
               <span class="mode-cta">Select fighter →</span>
@@ -268,7 +268,7 @@
             <p>Pick your fighter and face a CPU opponent in the arena.</p>
             <ul class="mode-points">
               <li>Your pick, your rules</li>
-              <li>CPU opponent picked at random</li>
+              <li>Pick your CPU opponent and difficulty</li>
               <li>Move, run and jump in the arena with your fighters</li>
             </ul>
             <span class="mode-cta">Select fighter →</span>
@@ -334,6 +334,15 @@
         <div class="pick-bar">
           <p id="pick-hint">Tap a fighter to preview.</p>
           <div class="slots"><b id="slot-p1">P1: —</b><b id="slot-p2">CPU: —</b></div>
+          <div class="ai-row" id="ai-row" hidden>
+            <span class="ai-row-label">CPU difficulty</span>
+            <div class="ai-difficulty" role="group" aria-label="CPU difficulty">
+              <button class="btn btn-small ai-diff-btn" type="button" data-difficulty="easy">Easy</button>
+              <button class="btn btn-small ai-diff-btn" type="button" data-difficulty="medium">Medium</button>
+              <button class="btn btn-small ai-diff-btn" type="button" data-difficulty="hard">Hard</button>
+            </div>
+            <button class="text-link" id="btn-random-cpu" type="button">Random CPU opponent</button>
+          </div>
           <button class="text-link" id="btn-swap-pick" type="button">Swap Pick (P1 / P2)</button>
           <button class="btn btn-primary" id="btn-confirm-fighters" type="button" disabled>Select a Fighter to Continue</button>
         </div>
@@ -358,7 +367,9 @@
           punches, kicks, blocks, dodges and combos, with live health bars —
           plus one signature special move per fighter (<kbd>H</kbd> / Numpad
           <kbd>6</kbd> / <b>SP</b> button, cooldown-gated) and best-of-3
-          rounds: first to 2 rounds takes the match. Damage is fixed per
+          rounds: first to 2 rounds takes the match. In Player vs Computer
+          the CPU fights back — pick its fighter and difficulty (Easy /
+          Medium / Hard) on the character select screen. Damage is fixed per
           fighter (no random numbers). Nothing here is faked.
         </div>
         <div class="arena-frame">
@@ -393,10 +404,10 @@
         <div class="foot-col">
           <h4>About</h4>
           <button class="foot-link" id="btn-about" type="button">About RISHU.COM</button>
-          <p>Phase 4 — six fighters, live 3D preview, movement, camera, touch controls and real combat: punches, kicks, blocks, dodges, combos, live health and KO.</p>
+          <p>Phase 6 — six fighters, live 3D preview, movement, camera, touch controls and real combat: punches, kicks, blocks, dodges, combos, specials, best-of-3 rounds, live health and KO — plus a CPU opponent with three difficulties.</p>
         </div>
       </div>
-      <p class="colophon">RISHU.COM — Phase 4 + Visual Upgrade · Original game, original fighters, original branding.</p>
+      <p class="colophon">RISHU.COM — Phase 6 · Original game, original fighters, original branding.</p>
     </footer>
   </div>
 
@@ -404,10 +415,10 @@
   <div class="modal" id="modal-how" role="dialog" aria-modal="true" aria-labelledby="how-title" aria-hidden="true">
     <div class="modal-box">
       <div class="modal-close-row">
-        <h2 id="how-title">How to Play — Phase 5</h2>
+        <h2 id="how-title">How to Play — Phase 6</h2>
         <button class="btn btn-small modal-close" type="button" data-close="modal-how">✕ Close</button>
       </div>
-      <p>Phase 5 adds signature special moves (one per fighter, cooldown-gated) and best-of-3 rounds on top of Phase 4 combat: punches, kicks, blocks, dodges and combos, with live health. These are the controls that <b>actually work right now</b>.</p>
+      <p>Phase 6 adds a computer opponent (Player vs Computer) on top of Phase 5: signature special moves (one per fighter, cooldown-gated) and best-of-3 rounds on top of Phase 4 combat: punches, kicks, blocks, dodges and combos, with live health. These are the controls that <b>actually work right now</b>.</p>
       <h3>Movement (works now)</h3>
       <ul>
         <li><b>Player 1:</b> <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Space</kbd> jump · <kbd>Shift</kbd> run.</li>
@@ -444,9 +455,14 @@
         <li>Damage is fixed per fighter (strength and defense change it) — no random numbers. Blocking reduces a hit to small chip damage; dodging through an attack avoids it completely. Chain hits quickly to build a combo — the combo counter appears at 2+ hits and damage scales down after the second hit.</li>
         <li>At 0 HP a fighter loses the round — first to 2 rounds wins the match, and the WINNER screen offers Rematch or Quit. A special is cooldown-gated (6–12 s by move); a blocked special deals small chip damage and a whiffed special still spends its cooldown.</li>
       </ul>
-      <h3>Not in Phase 5</h3>
+      <h3>Computer opponent (works now)</h3>
       <ul>
-        <li>CPU opponent AI — a later phase (in Player vs Computer the CPU fighter stands in guard for now).</li>
+        <li><b>Player vs Computer</b> — pick your fighter, then pick your CPU opponent: tap another fighter and press Select Fighter, or leave it random (Random CPU opponent button). Set the difficulty below the slots: <b>Easy</b> (slow reactions, basic attacks, rarely blocks), <b>Medium</b> (balanced timing, some blocks and dodges, basic combos) or <b>Hard</b> (fast reactions, counters, advanced combos). Difficulty changes how the CPU fights, not how hard it hits — damage is the same on every level.</li>
+        <li>The CPU watches the fight: it closes distance, attacks in range, blocks and dodges, punishes whiffs, and switches between aggressive, defensive, balanced and counter fighting as the match changes. It never reads your keys — it reacts to what your fighter does.</li>
+        <li>Beat the CPU and the screen says <b>YOU WIN</b>; lose and it says <b>YOU LOSE</b>. <b>Rematch</b> keeps the same difficulty; <b>Change difficulty</b> goes back to character select.</li>
+      </ul>
+      <h3>Not in Phase 6</h3>
+      <ul>
         <li>Online Multiplayer — coming in a later phase.</li>
       </ul>
     </div>

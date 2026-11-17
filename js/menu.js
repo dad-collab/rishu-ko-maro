@@ -14,6 +14,29 @@ import { createCharacterPreview } from './characterPreview.js';
 
 const SETTINGS_KEY = 'rishu.settings.v1';
 const SELECTION_KEY = 'rishu.selection.v1';
+// Phase 6 — CPU opponent settings: difficulty + the explicitly picked
+// CPU fighter (null = random, the default). Same pattern as the other
+// two keys; difficulty defaults to 'medium'.
+const AI_KEY = 'rishu.ai.v1';
+export const AI_DIFFICULTIES = ['easy', 'medium', 'hard'];
+
+export function loadAiSettings() {
+  try {
+    const raw = localStorage.getItem(AI_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        difficulty: AI_DIFFICULTIES.includes(parsed.difficulty) ? parsed.difficulty : 'medium',
+        cpuPick: typeof parsed.cpuPick === 'string' ? parsed.cpuPick : null,
+      };
+    }
+  } catch (e) { /* storage unavailable — fall through to defaults */ }
+  return { difficulty: 'medium', cpuPick: null };
+}
+
+export function saveAiSettings(a) {
+  try { localStorage.setItem(AI_KEY, JSON.stringify(a)); } catch (e) { /* ignore */ }
+}
 
 export function loadSettings() {
   try {
@@ -59,6 +82,10 @@ export function initMenu(api) {
   let previewWalk = false;
   let confirming = false; // guards the victory->arena transition
   let heroPreview = null; // homepage showcase preview (lazy, menu screen only)
+  // Phase 6 — CPU opponent settings (PvC only): difficulty + the
+  // explicitly picked CPU fighter (null = random).
+  let aiDifficulty = 'medium';
+  let cpuPick = null;
 
   let showTimer = null;
   function show(name) {
@@ -272,7 +299,11 @@ export function initMenu(api) {
     } else {
       const p1c = p1 ? getCharacter(p1) : null;
       const cpu = p2 ? getCharacter(p2) : null;
-      if (hint) hint.textContent = p1c ? `${p1c.name} confirmed. CPU opponent: ${cpu ? cpu.name : 'random — picked on Continue'}.` : 'Preview a fighter, then press Select Fighter to confirm your pick.';
+      if (hint) {
+        hint.textContent = p1c
+          ? `${p1c.name} confirmed. CPU opponent: ${cpu ? cpu.name : 'Random — picked on Continue'}. Tap another fighter + Select Fighter to change the CPU.`
+          : 'Preview a fighter, then press Select Fighter to confirm your pick.';
+      }
       if (confirmBtn) {
         confirmBtn.disabled = !p1 || confirming;
         confirmBtn.textContent = p1 ? 'Continue to Arena →' : 'Select a Fighter to Continue';
@@ -286,11 +317,36 @@ export function initMenu(api) {
     const p1Label = $('slot-p1');
     const p2Label = $('slot-p2');
     if (p1Label) p1Label.textContent = p1 ? `P1: ${getCharacter(p1).name}` : 'P1: —';
-    if (p2Label) p2Label.textContent = p2 ? `${selectedMode === '2p' ? 'P2' : 'CPU'}: ${getCharacter(p2).name}` : `${selectedMode === '2p' ? 'P2' : 'CPU'}: —`;
+    if (p2Label) {
+      p2Label.textContent = p2
+        ? `${selectedMode === '2p' ? 'P2' : 'CPU'}: ${getCharacter(p2).name}`
+        : `${selectedMode === '2p' ? 'P2' : 'CPU'}: ${selectedMode === '2p' ? '—' : 'Random'}`;
+    }
     // Swap-pick only makes sense in Two Player Local — hide it in PvC
     // so it is never a dead button.
     const swapBtn = $('btn-swap-pick');
     if (swapBtn) swapBtn.style.display = selectedMode === '2p' ? '' : 'none';
+    // Phase 6 — difficulty row + Random CPU button: PvC only.
+    const aiRow = $('ai-row');
+    if (aiRow) {
+      aiRow.hidden = selectedMode === '2p';
+      aiRow.querySelectorAll('.ai-diff-btn').forEach((b) => {
+        const active = b.dataset.difficulty === aiDifficulty;
+        b.classList.toggle('ai-diff-btn--active', active);
+        b.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+  }
+
+  // Phase 6 — difficulty row: three buttons, persisted in rishu.ai.v1,
+  // pre-selected from storage on open. PvC only (the row is hidden in
+  // 2P by updatePickUI).
+  function setDifficulty(d) {
+    if (!AI_DIFFICULTIES.includes(d)) return;
+    aiDifficulty = d;
+    saveAiSettings({ difficulty: aiDifficulty, cpuPick });
+    updatePickUI();
+    showToast(`CPU difficulty: ${d[0].toUpperCase()}${d.slice(1)}.`);
   }
 
   // Confirm the currently previewed fighter for the active slot.
@@ -310,10 +366,24 @@ export function initMenu(api) {
         pickingFor = 'p1'; // allow re-confirming either after both are set
       }
     } else {
-      p1 = focused;
-      // CPU opponent: pick a different fighter at random
-      const others = CHARACTERS.filter((x) => x.id !== focused);
-      p2 = others[Math.floor(Math.random() * others.length)].id;
+      // Phase 6 — PvC: the first pick is the player; a later pick of a
+      // DIFFERENT fighter sets the CPU opponent (the saved pick, or a
+      // random other fighter when none was picked). Re-picking the same
+      // fighter just re-confirms the player.
+      const hadP1 = !!p1;
+      if (!hadP1) {
+        p1 = focused;
+        if (cpuPick && cpuPick !== focused && getCharacter(cpuPick)) {
+          p2 = cpuPick;
+        } else {
+          const others = CHARACTERS.filter((x) => x.id !== focused);
+          p2 = others[Math.floor(Math.random() * others.length)].id;
+        }
+      } else if (focused !== p1) {
+        p2 = focused;
+        cpuPick = focused;
+        saveAiSettings({ difficulty: aiDifficulty, cpuPick });
+      }
     }
     if (preview) {
       preview.setAnimation('victory');
@@ -328,7 +398,12 @@ export function initMenu(api) {
       stage.classList.add('flash');
       setTimeout(() => stage.classList.remove('flash'), 450);
     }
-    showToast(`${c.name} confirmed${selectedMode === '2p' ? ` for ${pickingFor === 'p2' ? 'Player 1' : 'Player 2'}` : ''}!`);
+    // Phase 6 — in PvC a later pick of a different fighter sets the
+    // CPU opponent; say so (the old "confirmed" toast would lie).
+    const pickedCpu = selectedMode !== '2p' && p1 && focused !== p1 && p2 === focused;
+    showToast(pickedCpu
+      ? `${c.name} set as the CPU opponent.`
+      : `${c.name} confirmed${selectedMode === '2p' ? ` for ${pickingFor === 'p2' ? 'Player 1' : 'Player 2'}` : ''}!`);
     renderDetail(c);
     renderGrid();
   }
@@ -339,12 +414,18 @@ export function initMenu(api) {
     p2 = null;
     pickingFor = 'p1';
     confirming = false;
+    // Phase 6 — CPU settings from storage (PvC only): the difficulty
+    // row pre-selects, and the saved CPU pick is reused when the
+    // player confirms their fighter.
+    const ai = loadAiSettings();
+    aiDifficulty = ai.difficulty;
+    cpuPick = (ai.cpuPick && getCharacter(ai.cpuPick)) ? ai.cpuPick : null;
     const title = $('char-title');
     const sub = $('char-sub');
     if (title) title.textContent = mode === '2p' ? 'Choose Your Fighters' : 'Choose Your Fighter';
     if (sub) sub.textContent = mode === '2p'
       ? 'Player 1 confirms first, then Player 2. Same fighter cannot be picked twice.'
-      : 'Your CPU opponent is picked at random from the remaining fighters.';
+      : 'Pick your fighter, then pick your CPU opponent — or leave it random. Set the CPU difficulty below.';
     ensurePreview();
     // Pre-focus the last confirmed fighter (PvC) so returning players
     // land on their fighter instead of starting over.
@@ -368,6 +449,9 @@ export function initMenu(api) {
     const a = getCharacter(p1);
     const b = getCharacter(p2);
     saveSelection({ mode: selectedMode, p1, p2 });
+    // Phase 6 — persist the CPU settings (difficulty + the explicit CPU
+    // pick, if any) and pass the difficulty through to the arena.
+    if (selectedMode !== '2p') saveAiSettings({ difficulty: aiDifficulty, cpuPick });
     // Victory pose in the preview, then step into the arena.
     confirming = true;
     updatePickUI();
@@ -377,9 +461,9 @@ export function initMenu(api) {
       try {
         const label = $('arena-fight-label');
         if (label) {
-          label.innerHTML = `${a.name} <span class="vs">VS</span> ${b.name} <span class="fight-meta">· ${selectedMode === '2p' ? 'Two Player Local' : 'Player vs Computer'}</span>`;
+          label.innerHTML = `${a.name} <span class="vs">VS</span> ${b.name} <span class="fight-meta">· ${selectedMode === '2p' ? 'Two Player Local' : `Player vs Computer · CPU ${aiDifficulty[0].toUpperCase()}${aiDifficulty.slice(1)}`}</span>`;
         }
-        if (api.onEnterArena) api.onEnterArena(selectedMode, a, b);
+        if (api.onEnterArena) api.onEnterArena(selectedMode, a, b, selectedMode === '2p' ? undefined : { difficulty: aiDifficulty });
         show('arena');
       } catch (e) {
         // Never strand the user on a dead disabled button: if the arena
@@ -472,6 +556,20 @@ export function initMenu(api) {
 
   bind('btn-confirm-fighters', confirmFighters);
   bind('btn-select-fighter', selectFocusedFighter);
+
+  // Phase 6 — CPU difficulty buttons (PvC only; the row is hidden in
+  // 2P by updatePickUI) + Random CPU opponent (clears an explicit CPU
+  // pick — the CPU is re-rolled on Continue).
+  document.querySelectorAll('.ai-diff-btn').forEach((b) => {
+    b.addEventListener('click', () => setDifficulty(b.dataset.difficulty));
+  });
+  bind('btn-random-cpu', () => {
+    p2 = null;
+    cpuPick = null;
+    saveAiSettings({ difficulty: aiDifficulty, cpuPick: null });
+    showToast('CPU opponent: random.');
+    renderGrid();
+  });
 
   // Preview controls — all real actions on the live 3D preview.
   bind('btn-preview-rotate', () => {

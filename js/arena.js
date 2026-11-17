@@ -34,6 +34,7 @@ import { createComboTracker, comboScale } from './comboSystem.js';
 import { createCombatAudio } from './combatAudio.js';
 import { createSpecialController, specialFor } from './specials.js';
 import { createRoundSystem, ROUND_END_PAUSE } from './rounds.js';
+import { createCpuOpponent } from './ai.js';
 import { buildStadium } from './stadium.js';
 import { createEffects, FX_COLORS } from './effects.js';
 
@@ -579,6 +580,10 @@ export function createArena(container, opts = {}) {
   let projectileDef = null;
   let projectileAttacker = null;
   let projectileAttackerChar = null;
+  // Phase 6 — computer opponent (PvC only; null in 2P Local and outside
+  // a match). Created in startMatch, fed in the tick, disposed in
+  // stopMatch, reset per round.
+  let cpuAi = null;
 
   const ZERO_MOVE = { mx: 0, mz: 0, run: false, jump: false };
   const ZERO_COMBAT = { attack: null, block: false, blockLow: false, dodge: false, evade: false, special: false, grounded: true };
@@ -688,13 +693,19 @@ export function createArena(container, opts = {}) {
           loserChar ? loserChar.name : 'Loser',
           `${result.score.A}–${result.score.B}`,
           {
-            onRematch: () => { // Rematch: same mode, same pair, fresh match + intro again
+            onRematch: () => { // Rematch: same mode, same pair, same difficulty, fresh match + intro again
               if (lastMatch) {
-                startMatch(lastMatch.mode, lastMatch.charA, lastMatch.charB);
+                startMatch(lastMatch.mode, lastMatch.charA, lastMatch.charB, { difficulty: lastMatch.difficulty });
                 beginMatch();
               }
             },
             onQuit: () => { if (opts.onQuitMatch) opts.onQuitMatch(); },
+            // Phase 6 — winner overlay: YOU WIN / YOU LOSE wording in
+            // PvC (winnerSide 'A' is the player) + "Change difficulty"
+            // back to character select (difficulty pre-selected there).
+            onChangeDifficulty: () => { if (opts.onChangeDifficulty) opts.onChangeDifficulty(); },
+            winnerSide: winnerId,
+            mode: lastMatch.mode,
           },
         );
       }
@@ -718,6 +729,9 @@ export function createArena(container, opts = {}) {
     if (combo) combo.reset();
     if (specialA) specialA.reset();
     if (specialB) specialB.reset();
+    // Phase 6 — the AI resets per round (mode back to its preferred
+    // behaviour, history/timers cleared; difficulty persists).
+    if (cpuAi) cpuAi.reset();
     if (projectile) projectile.despawn();
     projectileDef = null;
     projectileAttacker = null;
@@ -989,10 +1003,20 @@ export function createArena(container, opts = {}) {
     hud.setPaused(!hud.isPaused());
   }
 
-  function startMatch(mode, charA, charB) {
+  function startMatch(mode, charA, charB, matchOpts = {}) {
     stopMatch(); // idempotent: a re-start disposes the old match first
     setFighters(charA, charB);
-    lastMatch = { mode, charA, charB };
+    // Phase 6 — difficulty travels with the match (menu passes it;
+    // 'medium' is the default when the caller does not).
+    // NOTE: the parameter is named matchOpts (not opts) on purpose:
+    // createArena's own `opts` (onQuitMatch, onChangeDifficulty,
+    // sound, quality) is in scope here, and a parameter named `opts`
+    // would shadow it — which silently broke the HUD Quit button
+    // (opts.onQuitMatch was undefined on the match opts) and the
+    // sound setting (opts.sound was undefined, so audio was always on).
+    const difficulty = (matchOpts && ['easy', 'medium', 'hard'].includes(matchOpts.difficulty))
+      ? matchOpts.difficulty : 'medium';
+    lastMatch = { mode, charA, charB, difficulty };
     const arenaScreen = document.getElementById('screen-arena');
     const arenaFrame = arenaScreen ? arenaScreen.querySelector('.arena-frame') : null;
 
@@ -1039,13 +1063,10 @@ export function createArena(container, opts = {}) {
     }
 
     // Phase 4 — combat. The combo tracker is created FIRST (the combat
-    // scale callbacks close over it). PvC has no AI: combatB still
-    // exists (it reacts — hitstun, block, KO) but the tick feeds it
-    // ZERO_COMBAT, so it never initiates.
+    // scale callbacks close over it).
     // Phase 5 — specials + rounds. The controllers are created before
     // the combat objects (they close over them); the rounds system owns
-    // the best-of-3 state for this match. The PvC CPU gets NO specials:
-    // the tick feeds it ZERO_COMBAT, so its special edge never fires.
+    // the best-of-3 state for this match.
     combo = createComboTracker();
     specialA = createSpecialController({ fighterId: charA.id });
     specialB = createSpecialController({ fighterId: charB.id });
@@ -1073,6 +1094,16 @@ export function createArena(container, opts = {}) {
     // controllers' getCameraForward closures above read this variable
     // when called, so they always see the fixed forward (0, 0, -1).
     fixedCamera = createFixedCamera();
+
+    // Phase 6 — computer opponent (PvC only). Created AFTER the combat
+    // objects exist (the perception it reads closes over them). In 2P
+    // Local there is no AI: combatB is driven by the P2 keyboard.
+    // The seed is fixed per match start (deterministic per match for
+    // the harness; the menu does not pick it).
+    cpuAi = mode === 'pvc'
+      ? createCpuOpponent({ difficulty, char: charB, seed: 0xC0FFEE ^ (Date.now() & 0xffff) })
+      : null;
+    if (hud && mode === 'pvc') hud.setAiLabel(difficulty);
 
     // Landscape-first (mobile): best-effort orientation lock, attempted
     // in the entry-gesture chain (still inside the transient-activation
@@ -1126,7 +1157,7 @@ export function createArena(container, opts = {}) {
   function ensureMatch() {
     if (matchRunning) return;
     if (matchBuilt) { beginMatch(); return; }
-    if (lastMatch) startMatch(lastMatch.mode, lastMatch.charA, lastMatch.charB);
+    if (lastMatch) startMatch(lastMatch.mode, lastMatch.charA, lastMatch.charB, { difficulty: lastMatch.difficulty });
     if (matchBuilt) beginMatch();
   }
 
@@ -1157,6 +1188,9 @@ export function createArena(container, opts = {}) {
     rounds = null;
     roundEndTimer = 0;
     roundEndResult = null;
+    // Phase 6 — dispose the AI (it holds no DOM/three refs, so nulling
+    // it is the whole teardown).
+    cpuAi = null;
     combatA = null;
     combatB = null;
     if (combo) { combo.reset(); combo = null; }
@@ -1175,6 +1209,48 @@ export function createArena(container, opts = {}) {
     controls.enabled = true;
     controls.autoRotate = true;
     onResize(); // theatre mode is off — the canvas goes back to 62vh
+  }
+
+  // Phase 6 — AI perception (world state ONLY — never player input).
+  // Built fresh each frame from the same live values the HUD reads:
+  // positions, combat states, the opponent's current attack (via the
+  // read-only getAttack() getter — id + elapsed + guard), animator
+  // state, HP, combo counts, grounded flags, round wins and special
+  // readiness. The AI module receives this object and nothing else —
+  // it has no access to `keyboard`, `touch` or the DOM (anti-cheat,
+  // AUDIT D6). `closing` tracks the distance trend over the last
+  // frame; `fwd` is the fixed camera forward (0, 0, -1 in a match).
+  let _aiLastDist = null;
+  function buildPerception() {
+    const myPos = ctrlB ? ctrlB.position : { x: 0, z: 0 };
+    const oppPos = ctrlA ? ctrlA.position : { x: 0, z: 0 };
+    const dist = Math.hypot(oppPos.x - myPos.x, oppPos.z - myPos.z);
+    const closing = _aiLastDist !== null && dist < _aiLastDist - 0.002;
+    _aiLastDist = dist;
+    if (fixedCamera) fixedCamera.getForward(_fwdV);
+    else _fwdV.set(0, 0, -1);
+    return {
+      now: simSec,
+      dist,
+      closing,
+      myHp: combatB ? combatB.getHp() : 100,
+      oppHp: combatA ? combatA.getHp() : 100,
+      myState: combatB ? combatB.getState() : 'ready',
+      oppState: combatA ? combatA.getState() : 'ready',
+      oppAttack: combatA ? combatA.getAttack() : null,
+      myAttack: combatB ? combatB.getAttack() : null,
+      oppAnim: fighterA ? fighterA.animator.getState() : 'idle',
+      myCombo: combo ? combo.getCount('B') : 0,
+      oppCombo: combo ? combo.getCount('A') : 0,
+      myGrounded: ctrlB ? ctrlB.isGrounded : true,
+      oppGrounded: ctrlA ? ctrlA.isGrounded : true,
+      myPos: { x: myPos.x, z: myPos.z },
+      oppPos: { x: oppPos.x, z: oppPos.z },
+      fwd: { x: _fwdV.x, z: _fwdV.z },
+      roundWins: rounds ? { my: rounds.wins.B, opp: rounds.wins.A } : { my: 0, opp: 0 },
+      round: rounds ? rounds.round : 1,
+      specialReady: specialB ? specialB.isReady(simSec) : false,
+    };
   }
 
   // ---- Render loop: paused when tab hidden, capped work ----
@@ -1196,10 +1272,10 @@ export function createArena(container, opts = {}) {
       // controllers -> separation -> combat.syncAnimator() (re-asserts
       // combat poses AFTER the controllers, or attacks never show) ->
       // animators -> stadium/effects -> HUD sync.
-      // In PvC the CPU fighter gets ZERO input (no AI) — it stands in
-      // guard, facing the player. The P2 keys are still read (to consume
-      // the jump/combat edges) but discarded outside 2P Local, so arrow
-      // keys can never move the CPU fighter.
+      // In PvC the CPU fighter is driven by the AI (Phase 6): the tick
+      // feeds it the AI's held movement/combat inputs. The P2 keys are
+      // still read (to consume the jump/combat edges) but discarded
+      // outside 2P Local, so arrow keys can never move the CPU fighter.
       if (introT > 0) {
         // FIGHT banner countdown: the crowd is alive and the fighters
         // breathe in guard, but there is no sim, no input and no timer
@@ -1225,16 +1301,23 @@ export function createArena(container, opts = {}) {
       if (combo) { combo.expire('A', simSec); combo.expire('B', simSec); }
       const p1in = readP1Input();
       const rawP2 = keyboard ? keyboard.getP2() : { ...ZERO_MOVE };
-      const p2in = (lastMatch && lastMatch.mode === '2p') ? rawP2 : { ...ZERO_MOVE };
+      // Phase 6 — PvC: the AI replaces the zeroed P2 inputs (the 2P
+      // path is byte-identical to before). The AI's held outputs were
+      // decided on the previous frame's update (one frame of lag).
+      const p2in = (lastMatch && lastMatch.mode === '2p') ? rawP2 : cpuAi ? cpuAi.getMovement() : { ...ZERO_MOVE };
       const c1in = readCombatInput('p1', p1in);
       const c2in = readCombatInput('p2', rawP2); // consumed even in PvC
-      const c2use = (lastMatch && lastMatch.mode === '2p') ? c2in : ZERO_COMBAT;
+      const c2use = (lastMatch && lastMatch.mode === '2p') ? c2in : cpuAi ? cpuAi.getCombat() : ZERO_COMBAT;
       if (hitstop > 0) {
         // Heavy-hit freeze: skip the sim (combat/controllers/
         // animators); the frame still renders (the fixed camera
         // never moves, so there is nothing to update).
         hitstop -= dt;
       } else {
+        // Phase 6 — the AI decides BEFORE the combat updates (same
+        // order as combat-before-movement): it observes the pre-move
+        // state. Frozen during hitstop (its timers are sim-based).
+        if (cpuAi) cpuAi.update(dt, buildPerception());
         if (combatA) combatA.update(dt, c1in, combatB);
         if (combatB) combatB.update(dt, c2use, combatA);
         if (combatA && combatA.isMovementLocked()) { p1in.mx = 0; p1in.mz = 0; p1in.run = false; p1in.jump = false; }

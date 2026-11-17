@@ -570,6 +570,22 @@ export function createFighterCombat({
     syncAnimator,
     receiveAttack,
     getState: () => state,
+    // Phase 6 — read-only current-attack accessor for the AI (PLAN §3.3):
+    // { id, t, total, guard } of the attack/special in flight, or null.
+    // The AI reads this to time blocks/dodges/counters from attack-state
+    // entry (never from the keypress). Zero behaviour change — a pure
+    // accessor over `attack` / `special`, which already exist.
+    getAttack() {
+      if (state === 'attack' && attack) {
+        const total = attack.def.startup + attack.def.active + attack.def.recovery;
+        return { id: attack.def.id, t: attack.t, total, guard: attack.def.guard };
+      }
+      if (state === 'special' && special) {
+        const total = special.def.startup + special.def.active + special.def.recovery;
+        return { id: 'special', t: special.t, total, guard: special.def.guard };
+      }
+      return null;
+    },
     getHp: () => hp,
     getMaxHp: () => MAX_HP,
     isMovementLocked: () => state !== 'ready',
