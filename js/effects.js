@@ -18,12 +18,13 @@
 
 import * as THREE from 'three';
 
-// Token colours (redesigned palette — same values as the CSS tokens).
+// Token colours (neon palette — same values as the CSS tokens).
+// Key names are kept so existing call sites survive the re-theme.
 export const FX_COLORS = {
-  ivory: 0xFFFDF6,
-  orange: 0xBC5222,
-  steel: 0x5B7A99,
-  gold: 0xE8C86A, // impact spark only — not a UI colour
+  ivory: 0xF5F0FF, // ink-white
+  orange: 0xA855F7, // neon purple
+  steel: 0x7C3AED, // violet
+  gold: 0xC084FC, // bright purple — impact spark only, not a UI colour
 };
 
 function mulberry32(seed) {
@@ -113,7 +114,68 @@ export function createEffects(scene, { maxParticles = 512 } = {}) {
     }
   }
 
+  // Impact flash (G1): a pooled additive sprite that pops on a heavy
+  // hit and fades in ~0.12 s. Four sprites, recycled — never allocated
+  // per hit. The arena calls flash() on heavy hits only.
+  const flashTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.4, 'rgba(192,132,252,0.8)');
+    g.addColorStop(1, 'rgba(168,85,247,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+  })();
+  const flashes = [];
+  for (let n = 0; n < 4; n++) {
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: flashTex, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    spr.scale.setScalar(0.01);
+    spr.visible = false;
+    scene.add(spr);
+    flashes.push({ spr, life: 0 });
+  }
+  let flashIdx = 0;
+  function flash(pos, { scale = 1.4 } = {}) {
+    const f = flashes[flashIdx];
+    flashIdx = (flashIdx + 1) % flashes.length;
+    f.spr.position.set(pos.x, pos.y, pos.z);
+    f.spr.scale.setScalar(scale);
+    f.spr.material.opacity = 1;
+    f.spr.visible = true;
+    f.life = 0.12;
+  }
+
+  // Ground dust (G1): slow, low, wide-spreading particles in a dusty
+  // purple-grey — kicked up on heavy hits and landings. The arena
+  // calls dust() on heavy hits (floor-level position).
+  function dust(pos, { count = 10, color = 0x8A7BA8 } = {}) {
+    for (let n = 0; n < count; n++) {
+      const a = rand() * Math.PI * 2;
+      const sp = 0.6 + rand() * 1.2;
+      spawn(pos.x, pos.y + 0.05, pos.z,
+        Math.cos(a) * sp, 0.25 + rand() * 0.5, Math.sin(a) * sp,
+        color, 0.55 + rand() * 0.3, 0.6, 0.9);
+    }
+  }
+
   function update(dt) {
+    for (const f of flashes) {
+      if (!f.spr.visible) continue;
+      f.life -= dt;
+      if (f.life <= 0) {
+        f.spr.visible = false;
+        f.spr.material.opacity = 0;
+      } else {
+        f.spr.material.opacity = f.life / 0.12;
+        f.spr.scale.multiplyScalar(1 + dt * 6);
+      }
+    }
     // No compaction: dead particles sit at size 0 / y=-100 and the pool
     // always draws all `max` points (512 points is trivial for the GPU).
     // Compaction would need the free list to track slot identities across
@@ -143,12 +205,16 @@ export function createEffects(scene, { maxParticles = 512 } = {}) {
 
   function dispose() {
     scene.remove(points);
+    for (const f of flashes) {
+      scene.remove(f.spr);
+      f.spr.material.dispose();
+    }
     geo.dispose();
     mat.dispose();
   }
 
   return {
-    burst, ring, trail, confetti, update, dispose,
+    burst, ring, trail, confetti, flash, dust, update, dispose,
     get liveCount() {
       let n = 0;
       for (let i = 0; i < max; i++) if (alive[i]) n++;

@@ -1,8 +1,8 @@
-# RISHU.COM — Phase 6
+# RISHU.COM — Neon Redesign (Build A) + Phase 6
 
 Premium 3D browser-based fighting game. **Original branding, UI, characters and visuals only** — nothing copied from FightKaro or any other game.
 
-**Visual redesign (2026-11-15):** the whole interface was rebuilt from scratch with its own identity — deep navy `#0E1B2E`, warm ivory surfaces `#F7F2E7`, burnt-orange primary `#BC5222`, muted steel blue `#5B7A99`, silver hairline borders. Asymmetric editorial homepage with a live 3D fighter showcase, Archivo Black display type + Inter body, full-screen character showcase with a horizontal fighter carousel, and a separate mobile layout (stage-first hero, sticky bottom action bar). The old black/blue system is gone — no trace of the old steel-blue accent remains anywhere in the live UI.
+**Neon redesign, Build A (2026-11-17):** the whole interface was rebuilt from scratch with its own identity — void black `#0A0612`, neon purple primary `#A855F7` (deep `#7C3AED`, bright `#C084FC`), gold crown mark `#F5C518` (crown only), restrained neon glow, Archivo Black display type + Inter body. Game-style main menu: a live two-fighter cinematic scene (Rishu vs Ayaan, idle animations) under the crowned RISHU.COM lockup ("FIGHT LIKE A LEGEND") with PLAY / CHARACTER SELECT / SETTINGS / QUIT — every button works (QUIT tries `window.close()` and shows an honest "close this tab" fallback, because a page cannot close its own tab). Rishu's face is the user's own photo — exact on his character card and HUD portrait, and as a photo-derived face texture on the in-arena 3D fighter (front view matches the photo; side angles are stylised). SFX volume slider in Settings (honest, no music system behind it). G1 graphics: cinematic purple/red light rig, shared PMREM environment lighting, contact shadows, glossy floors, impact flash + ground dust on heavy hits. No bloom (cut by measurement — see below). The old Harbour navy/ivory/burnt-orange system is gone — no trace of it remains anywhere in the live UI.
 
 **Phase 1** (done): main menu, game modes, character selection, How to Play, Settings, fullscreen, loading screen, and a real 3D arena preview (Three.js + WebGL).
 
@@ -12,8 +12,8 @@ Premium 3D browser-based fighting game. **Original branding, UI, characters and 
 
 ## What is in Phase 2
 
-- **Homepage** — asymmetric 5/7 hero: editorial headline, large Play Now button, stat strip, and a live 3D fighter showcase (Rishu, drag to rotate, auto-rotate). Below it: staggered game-mode cards, an arena-preview section with an octagon diagram, and a featured-fighters scroll strip that opens character select focused on that fighter.
-- **Character selection screen** — full-screen split: large live 3D preview (real Three.js model, never a static image) on a navy stage with the fighter's name overlapping the stage edge, beside an ivory detail panel (tagline, personality, special move, stat bars). Below: a horizontal fighter carousel (scroll-snap, focused card centred). Drag the preview to rotate; Auto-rotate toggle; Walk Preview toggle.
+- **Main menu** — game-style menu: live two-fighter scene (Rishu vs Ayaan) under the crowned logo lockup, then PLAY / CHARACTER SELECT / SETTINGS / QUIT buttons and a stat strip (06 Fighters · 01 Arena · 03 Modes). Game modes, fighters and the arena are still reachable from the nav, the footer and the modes screen.
+- **Character selection screen** — full-screen split: large live 3D preview (real Three.js model, never a static image) on a dark stage with the fighter's name overlapping the stage edge, beside a dark detail panel (tagline, personality, special move, stat bars). Below: a horizontal fighter carousel (scroll-snap, focused card centred, glowing-purple focused/selected states). Rishu's card shows the user's photo. Drag the preview to rotate; Auto-rotate toggle; Walk Preview toggle.
 - **Six original fighters** — Rishu (Balanced Striker), Ayaan (Storm Fist), Kabir (Iron Wall), Zara (Shadow Step), **Dev (The Forge, new)**, **Meera (Storm Dancer, new)**. Each has a unique procedural low-poly model: different body proportions, outfit, hairstyle and accessories, plus its own colour combination.
 - **Stats** — Strength, Speed, Defense, Special Power (1–10 each) as animated visual bars on cards and in the preview detail panel.
 - **Animations** — idle (breathing / guard sway), walking (leg/arm swing + bob), victory pose (arms raised, plays on selection confirm), selection animation (full spin + scale pulse + accent ring on switch). Procedural only, driven by `js/fighterAnimations.js`.
@@ -40,7 +40,7 @@ Premium 3D browser-based fighting game. **Original branding, UI, characters and 
 - **Combos** — a 1.2 s window measured in **sim-time** (the arena's accumulated dt), not wall-clock time, so the window cannot expire between landed hits on a slow device — three attacks are 1.02 s of sim, which is over 1.2 s of wall time below ~15 fps. A counter appears at 2+ hits, damage scaling ×1.0 (hits 1–2), ×0.9 (3–4), ×0.8 (5+), chain buffering (0.35 s, one buffered attack, cleared on hit), and interruption (a whiff, a dodge, or the opponent blocking breaks the chain).
 - **Hit detection & reactions** — range-only hits (no hits from unrealistic distance), hitstun that locks the defender's movement (0.22–0.50 s by attack), knockback on heavy attacks, hit-reaction animations (`hit` / `hitHeavy`), and a KO fall at 0 HP.
 - **Effects** — subtle hit flash on the defender, hitstop freeze (0.04 s heavy punch, 0.06 s heavy kick), and punch/kick/block/dodge/KO sounds synthesised with WebAudio (`js/combatAudio.js`, zero audio files) that respect the Settings sound toggle and never throw. (Camera: fixed pose, with a subtle shake on heavy hits only — ≤ 0.08 m, ≤ 0.35 s, returns to the exact pose.)
-- **Health & rounds** — 100 HP per fighter, live HUD bars (burnt-orange low-health state at ≤ 25 HP). A KO at 0 HP wins the ROUND (best-of-3, first to 2 takes the match): the round KO freezes 1.0 s with a round banner, then HP / positions / cooldowns / combo / timer reset and a "ROUND n — FIGHT!" intro runs (1.2 s, input frozen). The match win shows a WINNER screen reusing the pause box; Rematch restarts the same mode and fighters immediately.
+- **Health & rounds** — 100 HP per fighter, live HUD bars (danger-red low-health state at ≤ 25 HP). A KO at 0 HP wins the ROUND (best-of-3, first to 2 takes the match): the round KO freezes 1.0 s with a round banner, then HP / positions / cooldowns / combo / timer reset and a "ROUND n — FIGHT!" intro runs (1.2 s, input frozen). The match win shows a WINNER screen reusing the pause box; Rematch restarts the same mode and fighters immediately.
 - **Touch combat** — LP / HP / KICK / HK tap buttons, hold-to-block BLOCK, tap DODGE, tap SP for the special, in a 3×3 grid beside JUMP (P1 only, ≥ 44 px targets). Touch block is high guard only (no low guard on touch).
 - **Integration rule (the setFighters lesson)** — the arena tick calls `combat.syncAnimator()` AFTER the movement controllers and BEFORE `animator.update`, or the controllers would overwrite attack / hit / block poses with idle in the same frame. Combat updates run BEFORE the controllers so hit tests use pre-move positions.
 
@@ -81,7 +81,7 @@ Plain HTML / CSS / JS — no build step, no framework.
 
 - Three.js `0.160.0` via CDN ES modules (import map in `index.html`)
 - WebGL rendering, `OrbitControls` for the arena preview camera; the fight uses a fixed orthographic side-view camera (`js/fixedCamera.js`)
-- Modular files: `js/main.js` (boot + loading), `js/arena.js` (Three.js arena scene + match lifecycle), `js/menu.js` (screens/modals/settings/character select), `js/characters.js` (fighter data + stats), `js/fighterModels.js` (procedural 3D models), `js/fighterAnimations.js` (animation state machine), `js/characterPreview.js` (live 3D preview renderer), `js/movement.js` (keyboard input + fighter controller), `js/fixedCamera.js` (fixed side-view fight camera), `js/touchControls.js` (virtual joystick + jump), `js/hud.js` (match HUD + pause), `js/combat.js` (Phase 4–5 — combat state machine, damage, hit detection, specials), `js/comboSystem.js` (Phase 4 — combo tracking + scaling), `js/combatAudio.js` (Phase 4–5 — WebAudio synth sound effects), `js/specials.js` (Phase 5 — special definitions + cooldowns), `js/rounds.js` (Phase 5 — best-of-3 rounds)
+- Modular files: `js/main.js` (boot + loading), `js/arena.js` (Three.js arena scene + match lifecycle), `js/menu.js` (screens/modals/settings/character select), `js/characters.js` (fighter data + stats), `js/fighterModels.js` (procedural 3D models), `js/fighterAnimations.js` (animation state machine), `js/characterPreview.js` (live 3D preview renderer), `js/menuScene.js` (Build A — two-fighter menu scene), `js/environment.js` (Build A — shared PMREM env + contact-shadow texture), `js/rishuFace.js` (Build A — Rishu's photo crops as base64 data URIs), `js/movement.js` (keyboard input + fighter controller), `js/fixedCamera.js` (fixed side-view fight camera), `js/touchControls.js` (virtual joystick + jump), `js/hud.js` (match HUD + pause), `js/combat.js` (Phase 4–5 — combat state machine, damage, hit detection, specials), `js/comboSystem.js` (Phase 4 — combo tracking + scaling), `js/combatAudio.js` (Phase 4–5 — WebAudio synth sound effects), `js/specials.js` (Phase 5 — special definitions + cooldowns), `js/rounds.js` (Phase 5 — best-of-3 rounds)
 
 ## Project structure
 
@@ -137,12 +137,22 @@ Needs an internet connection for the Three.js CDN on first load.
 2. No build command, no framework preset — it is a static site; output directory is the project root.
 3. Deploy. No environment variables are needed.
 
-## Colours (redesign 2026-11-15)
+## Colours (neon redesign, Build A 2026-11-17)
 
-- Page deep navy `#0E1B2E`, deep `#0A1424`, dark panels `#16283F`
-- Ivory surfaces `#FFFDF6` / `#F7F2E7` / `#EFE7D6`, silver borders `#C9CDD3` / `#A9AEB8`
-- Primary burnt orange `#BC5222` (hover `#9A3F16`, small text `#7E3410`, small text on navy `#E07B45`)
-- Muted steel blue `#5B7A99` (deep `#3E5A75`, small text on navy `#8FA9C2`)
-- Ink text `#1B2A3D` on ivory, warm paper `#F2EDE3` on navy
-- All body text ≥ 4.5:1, large/bold ≥ 3:1 — verified with `../rishu-com-redesign-draft/contrast_check.py`
-- Flat colour only, no heavy gradients — by design.
+- Void `#0A0612` (page), panel `#120A1E`, raised `#1B1030`, surfaces `#17102A` / `#221741`
+- Neon purple `#A855F7` (primary buttons, white text), deep `#7C3AED` (hover / small buttons), bright `#C084FC` (small neon text on dark)
+- Gold `#F5C518` — the crown mark ONLY, never a UI colour
+- Ink text `#F5F0FF` on dark, muted `#B8A8D9`
+- Danger red `#DC2626` (low health, danger only)
+- Fighter colours: Rishu `#A855F7`, Ayaan `#E8E8EC` (silver-white), Kabir `#6D28D9`, Zara `#C026D3`, Dev `#B8A8D9`, Meera `#818CF8`
+- Flat colour + restrained glow shadows only, no cheap gradients — by design.
+- Bloom was CUT in Build A (see below): the neon look comes from the light rig + PMREM env + CSS glow, not a post-processing pass.
+
+## What is NOT in Build A (honest list)
+
+- **Bloom** — UnrealBloomPass was evaluated and CUT: it would need a composer swap across the whole render path (arena + preview + menu scene) for a gain the VM cannot measure (fill-rate cost is a real-device property). The neon look is delivered without it; bloom can be revisited if a real device shows headroom.
+- **Build B** — victory screen rebuild + per-round times (not started).
+- **Build C** — stage select + 4 arenas (Temple / City / Desert / Snow) + per-stage lighting (not started).
+- **G2** — FPS meter + auto-quality governor (not started; manual 3-tier quality stays).
+- **Music** — no background music system; the Settings slider is SFX volume only.
+- **Rishu's face, side angles** — the 3D fighter's face matches the photo from the front; side angles are stylised by the sphere's curvature (a 2D photo on a procedural head cannot be pixel-identical from every angle).

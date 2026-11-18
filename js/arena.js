@@ -37,6 +37,7 @@ import { createRoundSystem, ROUND_END_PAUSE } from './rounds.js';
 import { createCpuOpponent } from './ai.js';
 import { buildStadium } from './stadium.js';
 import { createEffects, FX_COLORS } from './effects.js';
+import { getEnvironmentMap, getContactShadowTexture } from './environment.js';
 
 const QUALITY = {
   low: { pixelRatio: 1, shadows: false, antialias: false },
@@ -89,56 +90,61 @@ function ropeMatrix(x1, z1, x2, z2, h) {
 
 function makeFloorTexture() {
   // Procedural canvas texture — no external images needed.
+  // G1: 2048px (was 1024) — the drawing stays in 1024-space and is
+  // scaled 2x, so every coordinate below is unchanged.
   const c = document.createElement('canvas');
-  c.width = 1024;
-  c.height = 1024;
+  c.width = 2048;
+  c.height = 2048;
   const g = c.getContext('2d');
+  g.scale(2, 2);
 
-  // Dark mat (navy stage)
-  g.fillStyle = '#16283F';
+  // Dark mat — black-band fix (2026-11-18): the old void-colour mat
+  // (#120A1E) rendered RGB 1-6 at the bottom of the frame. Visible
+  // dark steel-navy instead, in the same family as the hall floor.
+  g.fillStyle = '#232F4A';
   g.fillRect(0, 0, 1024, 1024);
 
   // Subtle checker / mat panels
   for (let y = 0; y < 8; y++) {
     for (let x = 0; x < 8; x++) {
       if ((x + y) % 2 === 0) {
-        g.fillStyle = 'rgba(255,255,255,0.025)';
+        g.fillStyle = 'rgba(255,255,255,0.05)';
         g.fillRect(x * 128, y * 128, 128, 128);
       }
     }
   }
 
-  // Outer ring line (burnt orange, restrained)
-  g.strokeStyle = '#BC5222';
+  // Outer ring line (neon purple, restrained)
+  g.strokeStyle = '#A855F7';
   g.lineWidth = 10;
   g.beginPath();
   g.arc(512, 512, 430, 0, Math.PI * 2);
   g.stroke();
 
   // Inner ring line
-  g.strokeStyle = 'rgba(188,82,34,0.45)';
+  g.strokeStyle = 'rgba(168,85,247,0.45)';
   g.lineWidth = 4;
   g.beginPath();
   g.arc(512, 512, 300, 0, Math.PI * 2);
   g.stroke();
 
-  // Visual upgrade — outer decorative ring (thin ivory dashes + a
-  // fine orange hairline outside the main ring line, inside r=5.4).
-  g.strokeStyle = 'rgba(242,237,227,0.4)';
+  // Visual upgrade — outer decorative ring (thin ink dashes + a
+  // fine neon hairline outside the main ring line, inside r=5.4).
+  g.strokeStyle = 'rgba(245,240,255,0.4)';
   g.lineWidth = 4;
   g.setLineDash([26, 18]);
   g.beginPath();
   g.arc(512, 512, 480, 0, Math.PI * 2);
   g.stroke();
   g.setLineDash([]);
-  g.strokeStyle = 'rgba(188,82,34,0.5)';
+  g.strokeStyle = 'rgba(168,85,247,0.5)';
   g.lineWidth = 3;
   g.beginPath();
   g.arc(512, 512, 500, 0, Math.PI * 2);
   g.stroke();
 
   // Centre mark — thin-stroke open R (same construction as the wordmark)
-  g.strokeStyle = 'rgba(242,237,227,0.85)';
+  g.strokeStyle = 'rgba(245,240,255,0.85)';
   g.lineWidth = 14;
   g.lineJoin = 'miter';
   g.beginPath();
@@ -151,13 +157,13 @@ function makeFloorTexture() {
   g.moveTo(512, 482);
   g.lineTo(582, 602);
   g.stroke();
-  // Orange dot at the diagonal joint
-  g.fillStyle = 'rgba(188,82,34,0.9)';
+  // Neon dot at the diagonal joint
+  g.fillStyle = 'rgba(168,85,247,0.9)';
   g.beginPath();
   g.arc(512, 482, 12, 0, Math.PI * 2);
   g.fill();
 
-  g.fillStyle = 'rgba(242,237,227,0.55)';
+  g.fillStyle = 'rgba(245,240,255,0.55)';
   g.font = '600 34px Arial, sans-serif';
   g.textAlign = 'center';
   g.fillText('R I S H U . C O M', 512, 700);
@@ -176,7 +182,7 @@ function makeFloorTexture() {
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = 8; // G1: sharper at glancing angles
   return tex;
 }
 
@@ -192,9 +198,9 @@ function makeFloorTexture() {
 // no vertical dodge rule — dodging is the i-frame dodge).
 function createProjectile({ scene }) {
   const geo = new THREE.SphereGeometry(0.16, 16, 12);
-  const mat = new THREE.MeshBasicMaterial({ color: 0x4F7DF3 });
+  const mat = new THREE.MeshBasicMaterial({ color: 0xA855F7 });
   const mesh = new THREE.Mesh(geo, mat);
-  const light = new THREE.PointLight(0x4F7DF3, 2, 3);
+  const light = new THREE.PointLight(0xA855F7, 2, 3);
   mesh.add(light);
   mesh.visible = false;
   scene.add(mesh);
@@ -269,8 +275,9 @@ export function createArena(container, opts = {}) {
 
   onProgress(30, 'Building arena…');
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0E1B2E);
-  scene.fog = new THREE.Fog(0x0E1B2E, 18, 42);
+  scene.background = new THREE.Color(0x0A0612);
+  scene.fog = new THREE.Fog(0x0A0612, 18, 42);
+  scene.environment = getEnvironmentMap(renderer); // G1: PMREM env, one-time cost
 
   const camera = new THREE.PerspectiveCamera(
     50,
@@ -280,7 +287,7 @@ export function createArena(container, opts = {}) {
   );
   camera.position.set(7.5, 4.2, 8.5);
 
-  // ---- Lighting: key + fill + rim + overhead spots ----
+  // ---- Lighting (G1): key + purple fill + red rim + overhead spots ----
   scene.add(new THREE.AmbientLight(0x8a93a8, 0.55));
 
   const key = new THREE.DirectionalLight(0xffffff, 2.2);
@@ -294,11 +301,25 @@ export function createArena(container, opts = {}) {
   key.shadow.camera.far = 30;
   scene.add(key);
 
-  const fill = new THREE.DirectionalLight(0x5B7A99, 0.7);
+  const fill = new THREE.DirectionalLight(0x7C3AED, 0.7);
   fill.position.set(-6, 4, -4);
   scene.add(fill);
 
-  const rim = new THREE.SpotLight(0xffffff, 120, 30, Math.PI / 5, 0.45, 1.6);
+  // Black-band fix (2026-11-18): the foreground floor + mat at the
+  // bottom of the frame were effectively unlit (key blocked by the
+  // ring platform, spots aimed at the ring centre), so they rendered
+  // RGB 1-6 — a black band. A soft lavender wash from the camera side
+  // (arena house lights) lifts the foreground without touching the
+  // fixed camera or the fighters' key lighting. No shadows.
+  // Intensity 4.5 is MEASURED (probe-band4): 0.9 left the band at
+  // RGB(3-6); 4.5 lifts it to RGB(14-21, 10-16, 33-43) — visible
+  // dark navy. Turning the key shadow off changed nothing, so the
+  // band was never in shadow; ACES was crushing the dark floor.
+  const washFront = new THREE.DirectionalLight(0xC7B8FF, 4.5);
+  washFront.position.set(0, 6, 12);
+  scene.add(washFront);
+
+  const rim = new THREE.SpotLight(0xDC2626, 120, 30, Math.PI / 5, 0.45, 1.6);
   rim.position.set(0, 9, -7);
   rim.target.position.set(0, 1, 0);
   scene.add(rim, rim.target);
@@ -312,7 +333,7 @@ export function createArena(container, opts = {}) {
     scene.add(s, s.target);
     const fixture = new THREE.Mesh(
       new THREE.CylinderGeometry(0.22, 0.3, 0.18, 16),
-      new THREE.MeshStandardMaterial({ color: 0x16283F, roughness: 0.4, metalness: 0.6 })
+      new THREE.MeshStandardMaterial({ color: 0x120A1E, roughness: 0.4, metalness: 0.6 })
     );
     fixture.position.set(x, y, z);
     scene.add(fixture);
@@ -320,17 +341,23 @@ export function createArena(container, opts = {}) {
 
   onProgress(55, 'Laying the ring floor…');
   // ---- Floor: large dark hall floor + raised ring platform ----
-  const hallFloor = new THREE.Mesh(
-    new THREE.CircleGeometry(22, 48),
-    new THREE.MeshStandardMaterial({ color: 0x0A1424, roughness: 0.95 })
-  );
+  // Black-band fix (2026-11-18): the old void-colour floor (0x0A0612)
+  // rendered RGB 1-6 at the bottom of the frame. Visible dark
+  // steel-navy instead, and a less mirror-like roughness so the
+  // grazing-angle view reads as floor, not a black mirror of the
+  // dark room.
+  const hallFloorMat = new THREE.MeshStandardMaterial({ color: 0x27364F, roughness: 0.6, metalness: 0.1 });
+  hallFloorMat.envMapIntensity = 1.2; // G1: glossy hall floor
+  const hallFloor = new THREE.Mesh(new THREE.CircleGeometry(22, 48), hallFloorMat);
   hallFloor.rotation.x = -Math.PI / 2;
   hallFloor.receiveShadow = true;
   scene.add(hallFloor);
 
   const ringBase = new THREE.Mesh(
     new THREE.CylinderGeometry(5.6, 5.9, 0.55, 8),
-    new THREE.MeshStandardMaterial({ color: 0x16283F, roughness: 0.7, metalness: 0.25 })
+    // Black-band fix: apron skirt a touch lighter so the octagonal
+    // front face reads at the bottom of the frame instead of black.
+    new THREE.MeshStandardMaterial({ color: 0x241A38, roughness: 0.7, metalness: 0.25 })
   );
   ringBase.position.y = 0.275;
   ringBase.receiveShadow = true;
@@ -338,19 +365,18 @@ export function createArena(container, opts = {}) {
   ringBase.rotation.y = Math.PI / 8; // octagonal ring
   scene.add(ringBase);
 
-  const ringMat = new THREE.Mesh(
-    new THREE.CircleGeometry(5.4, 48),
-    new THREE.MeshStandardMaterial({ map: makeFloorTexture(), roughness: 0.85 })
-  );
+  const ringFloorMat = new THREE.MeshStandardMaterial({ map: makeFloorTexture(), roughness: 0.4, metalness: 0.1 });
+  ringFloorMat.envMapIntensity = 1.4; // G1: glossy ring floor
+  const ringMat = new THREE.Mesh(new THREE.CircleGeometry(5.4, 48), ringFloorMat);
   ringMat.rotation.x = -Math.PI / 2;
   ringMat.position.y = 0.56;
   ringMat.receiveShadow = true;
   scene.add(ringMat);
 
-  // Apron trim (burnt orange, thin)
+  // Apron trim (neon purple, thin)
   const trim = new THREE.Mesh(
     new THREE.TorusGeometry(5.55, 0.045, 8, 64),
-    new THREE.MeshStandardMaterial({ color: 0xBC5222, roughness: 0.4, metalness: 0.4 })
+    new THREE.MeshStandardMaterial({ color: 0xA855F7, roughness: 0.4, metalness: 0.4 })
   );
   trim.rotation.x = Math.PI / 2;
   trim.position.y = 0.56;
@@ -358,9 +384,9 @@ export function createArena(container, opts = {}) {
 
   onProgress(70, 'Raising posts and ropes…');
   // ---- Corner posts + ropes ----
-  const postMat = new THREE.MeshStandardMaterial({ color: 0x3E5A75, roughness: 0.35, metalness: 0.7 });
-  const ropeMat = new THREE.MeshStandardMaterial({ color: 0xBC5222, roughness: 0.5 });
-  const ropeMat2 = new THREE.MeshStandardMaterial({ color: 0xF2EDE3, roughness: 0.5 });
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x4C2D7A, roughness: 0.35, metalness: 0.7 });
+  const ropeMat = new THREE.MeshStandardMaterial({ color: 0xA855F7, roughness: 0.5 });
+  const ropeMat2 = new THREE.MeshStandardMaterial({ color: 0xF5F0FF, roughness: 0.5 });
   const corners = [[-4.6, -4.6], [4.6, -4.6], [4.6, 4.6], [-4.6, 4.6]];
   // Draw-call merge: the 4 posts share one geometry + material, and so
   // do the 4 caps — each group merges into a single mesh (see the
@@ -442,17 +468,17 @@ export function createArena(container, opts = {}) {
   // ---- Backdrop: dark arena walls + crowd light strips ----
   const wall = new THREE.Mesh(
     new THREE.CylinderGeometry(20, 20, 10, 48, 1, true),
-    new THREE.MeshStandardMaterial({ color: 0x0A1424, roughness: 0.95, side: THREE.BackSide })
+    new THREE.MeshStandardMaterial({ color: 0x0A0612, roughness: 0.95, side: THREE.BackSide })
   );
   wall.position.y = 5;
   scene.add(wall);
 
-  // Light strips around the wall (restrained steel) — merged by
+  // Light strips around the wall (restrained violet) — merged by
   // material into 2 draw calls (was 12; same draw-call merge as the
   // posts above). The merged meshes span the whole ring, so they
   // always render (2 calls) instead of ~5 individual strips.
-  const stripSteelMat = new THREE.MeshBasicMaterial({ color: 0x5B7A99 });
-  const stripDarkMat = new THREE.MeshBasicMaterial({ color: 0x2A3B52 });
+  const stripSteelMat = new THREE.MeshBasicMaterial({ color: 0x7C3AED });
+  const stripDarkMat = new THREE.MeshBasicMaterial({ color: 0x2E1B4D });
   const stripParts = { steel: [], dark: [] };
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2;
@@ -467,7 +493,7 @@ export function createArena(container, opts = {}) {
   // ---- Fighters (Phase 2 models, idle animation) ----
   // Default pair matches the original defaults (Rishu vs Ayaan) until
   // setFighters() is called with the player's selection.
-  const DEFAULT_A = { id: 'rishu', color: '#BC5222', colorDark: '#7E3410', model: { build: 'average', height: 1, hair: 'spiky', outfit: 'vest', accessory: 'headband' }, skin: 0x8a6a52 };
+  const DEFAULT_A = { id: 'rishu', color: '#A855F7', colorDark: '#7C3AED', model: { build: 'average', height: 1, hair: 'spiky', outfit: 'vest', accessory: 'headband' }, skin: 0x715341 };
   const DEFAULT_B = { id: 'ayaan', color: '#E8E8EC', colorDark: '#8A8F9E', model: { build: 'broad', height: 1.02, hair: 'mohawk', outfit: 'hoodie', accessory: 'wristbands' }, skin: 0x6b4a35 };
   function placeFighter(char, x, facing) {
     const m = buildFighterModel(char);
@@ -480,6 +506,33 @@ export function createArena(container, opts = {}) {
   }
   let fighterA = placeFighter(DEFAULT_A, -1.6, Math.PI / 2);
   let fighterB = placeFighter(DEFAULT_B, 1.6, -Math.PI / 2);
+
+  // Contact shadows (G1): soft radial blobs under each fighter. They
+  // follow the live model positions every tick and fade/shrink with
+  // jump height (see the tick). The planes are created once here and
+  // read the CURRENT fighterA/fighterB — setFighters() replaces the
+  // models, not the shadows.
+  const shadowTex = getContactShadowTexture();
+  function makeContactShadow() {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.1, 1.1),
+      new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0.55 })
+    );
+    m.rotation.x = -Math.PI / 2;
+    m.position.y = 0.58;
+    scene.add(m);
+    return m;
+  }
+  const shadowA = makeContactShadow();
+  const shadowB = makeContactShadow();
+  function updateContactShadow(shadow, group) {
+    const p = group.position;
+    shadow.position.set(p.x, 0.58, p.z);
+    const h = Math.max(0, p.y - 0.56); // jump height above the ring
+    const s = Math.max(0.7, 1 - h * 0.35);
+    shadow.scale.setScalar(s);
+    shadow.material.opacity = 0.55 * s;
+  }
 
   // Closure-level setFighters: startMatch() calls this directly.
   // (It used to exist ONLY as a method on the returned API object, so
@@ -795,7 +848,11 @@ export function createArena(container, opts = {}) {
             { x: p.x, y: p.y + 1.3, z: p.z },
             { color: heavy ? FX_COLORS.orange : FX_COLORS.gold, count: heavy ? 22 : 14 },
           );
-          if (heavy) effects.ring({ x: p.x, y: p.y + 1.0, z: p.z }, { color: FX_COLORS.orange });
+          if (heavy) {
+            effects.ring({ x: p.x, y: p.y + 1.0, z: p.z }, { color: FX_COLORS.orange });
+            effects.flash({ x: p.x, y: p.y + 1.3, z: p.z }); // G1 impact flash
+            effects.dust({ x: p.x, y: 0.56, z: p.z }); // G1 ground dust
+          }
         }
         if (heavy && stadium) stadium.setExcitement(0.6);
         const def = ATTACKS[ev.attack];
@@ -833,6 +890,7 @@ export function createArena(container, opts = {}) {
         combo.recordHit(attackerId, 'special', simSec);
         combo.recordInterrupted(id);
         const def = attackerChar ? specialFor(attackerChar.id) : null;
+        const p = defenderModel.group.position;
         if (audio && def) audio.play(def.sound);
         if (flashTimer) { clearTimeout(flashTimer); flashTimer = 0; }
         flashTimer = flashFighter(defenderModel);
@@ -840,7 +898,6 @@ export function createArena(container, opts = {}) {
         // Ember Rush (ivory burst + orange ring), ring = Cyclone Kick
         // (steel ring + steel burst), burst = power-punch specials.
         if (effects && def) {
-          const p = defenderModel.group.position;
           if (def.vfx === 'burstBig') {
             effects.burst({ x: p.x, y: p.y + 1.3, z: p.z }, { color: FX_COLORS.ivory, count: 30 });
             effects.ring({ x: p.x, y: p.y + 1.0, z: p.z }, { color: FX_COLORS.orange });
@@ -851,6 +908,7 @@ export function createArena(container, opts = {}) {
             effects.burst({ x: p.x, y: p.y + 1.3, z: p.z }, { color: FX_COLORS.orange, count: 22 });
           }
         }
+        if (effects) effects.flash({ x: p.x, y: p.y + 1.3, z: p.z }, { scale: 1.8 }); // G1 impact flash
         if (stadium) stadium.setExcitement(0.6);
         // Same decoupled fields as the normal 'hit' case: hitstop from
         // def.hitstop, shake from def.shake (audited table values only).
@@ -1085,7 +1143,7 @@ export function createArena(container, opts = {}) {
     });
     combatA = makeCombat('A', charA, ctrlA, ctrlB);
     combatB = makeCombat('B', charB, ctrlB, ctrlA);
-    audio = createCombatAudio({ enabled: opts.sound !== false });
+    audio = createCombatAudio({ enabled: opts.sound !== false, volume: volumeLevel });
     // Phase 5 — the Energy Blast projectile (Zara's Shadow Step).
     projectile = createProjectile({ scene });
 
@@ -1434,6 +1492,10 @@ export function createArena(container, opts = {}) {
     // pause and rotate pause freeze the frame, shake included). Runs in
     // the live match, through hitstop, and through the KO freeze so the
     // KO-blow shake settles to the exact pose. No-op when trauma is 0.
+    // Contact shadows follow the fighters (G1) — live match, KO freeze
+    // and idle preview alike (the planes read the current models).
+    updateContactShadow(shadowA, fighterA.model.group);
+    updateContactShadow(shadowB, fighterB.model.group);
     if (fixedCamera && !paused) fixedCamera.update(dt);
     renderer.render(scene, renderCamera);
   }
@@ -1486,7 +1548,15 @@ export function createArena(container, opts = {}) {
   }
   document.addEventListener('visibilitychange', onVisibility);
 
+  // SFX volume (Build A, D-5): stored per arena so a match started
+  // after the slider moves still starts at the chosen level.
+  let volumeLevel = 1;
   return {
+    setVolume(v) {
+      volumeLevel = Math.max(0, Math.min(1, Number(v) || 0));
+      if (audio) audio.setVolume(volumeLevel);
+    },
+    getVolume: () => volumeLevel,
     setQuality(name) {
       const nq = QUALITY[name] || QUALITY.high;
       renderer.setPixelRatio(nq.pixelRatio);

@@ -5,12 +5,15 @@
 // carousel below. Tap a card to preview that fighter; "Select Fighter"
 // confirms the pick (victory pose + confirmed badge); "Continue" enters
 // the arena with the confirmed fighters.
-// Homepage: asymmetric hero with a live 3D showcase (same preview module).
+// Main menu (Build A): two-fighter cinematic scene (menuScene.js) +
+// logo lockup + PLAY / CHARACTER SELECT / SETTINGS / QUIT.
 // No fake buttons: every action below either navigates, opens a real
 // modal, changes a real setting, or is explicitly labelled Coming Soon.
 
 import { CHARACTERS, getCharacter, STAT_DEFS } from './characters.js';
 import { createCharacterPreview } from './characterPreview.js';
+import { createMenuScene } from './menuScene.js';
+import { RISHU_FACE_PORTRAIT } from './rishuFace.js';
 
 const SETTINGS_KEY = 'rishu.settings.v1';
 const SELECTION_KEY = 'rishu.selection.v1';
@@ -41,9 +44,13 @@ export function saveAiSettings(a) {
 export function loadSettings() {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { sound: true, quality: 'high', ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = { sound: true, quality: 'high', volume: 100, ...JSON.parse(raw) };
+      parsed.volume = Math.max(0, Math.min(100, Number(parsed.volume) || 0));
+      return parsed;
+    }
   } catch (e) { /* storage unavailable — fall through to defaults */ }
-  return { sound: true, quality: 'high' };
+  return { sound: true, quality: 'high', volume: 100 };
 }
 
 export function saveSettings(s) {
@@ -81,7 +88,7 @@ export function initMenu(api) {
   let preview = null; // characterPreview instance (lazy)
   let previewWalk = false;
   let confirming = false; // guards the victory->arena transition
-  let heroPreview = null; // homepage showcase preview (lazy, menu screen only)
+  let menuScene = null; // two-fighter menu scene (lazy, menu screen only)
   // Phase 6 — CPU opponent settings (PvC only): difficulty + the
   // explicitly picked CPU fighter (null = random).
   let aiDifficulty = 'medium';
@@ -121,14 +128,12 @@ export function initMenu(api) {
     if (name === 'arena' && api.onArenaShown) api.onArenaShown();
     if (name === 'characters' && preview) preview.resize();
     if (name === 'menu') {
-      ensureHeroPreview();
-      if (heroPreview) heroPreview.resize();
-    }
-    // WebGL budget: on small screens the hero preview is destroyed — not
-    // just hidden — when leaving the menu, to protect low-end memory.
-    if (name !== 'menu' && heroPreview && window.matchMedia('(max-width: 640px)').matches) {
-      heroPreview.dispose();
-      heroPreview = null;
+      ensureMenuScene();
+      if (menuScene) { menuScene.resize(); menuScene.start(); }
+    } else if (menuScene) {
+      // Pause the menu loop while another screen shows (the scene is
+      // kept — one renderer, no re-bake — just the rAF stops).
+      menuScene.stop();
     }
   }
 
@@ -163,26 +168,23 @@ export function initMenu(api) {
     return preview;
   }
 
-  // ---------- Homepage hero showcase (reuses characterPreview.js) ----------
-  function ensureHeroPreview() {
-    if (heroPreview) return heroPreview;
-    const wrap = $('hero-preview');
+  // ---------- Main menu scene (Build A): two fighters facing off ----------
+  function ensureMenuScene() {
+    if (menuScene) return menuScene;
+    const wrap = $('menu-scene');
     if (!wrap) return null;
     try {
-      heroPreview = createCharacterPreview(wrap, {
-        quality: api.settings.quality,
-        isVisible: () => currentScreen === 'menu',
-      });
-      if (heroPreview) heroPreview.setFighter(getCharacter('rishu'), false);
+      menuScene = createMenuScene(wrap);
+      menuScene.start();
     } catch (e) {
-      console.error('[RISHU] Hero showcase failed to start:', e);
-      heroPreview = null;
+      console.error('[RISHU] Menu scene failed to start:', e);
+      menuScene = null;
     }
-    if (!heroPreview) {
+    if (!menuScene && !wrap.querySelector('.preview-fallback')) {
       // Honest fallback: the menu still works, the stage explains why.
-      wrap.innerHTML = '<p class="preview-fallback">3D showcase is unavailable in this browser (WebGL needed). Play Now still works.</p>';
+      wrap.insertAdjacentHTML('beforeend', '<p class="preview-fallback">3D menu scene is unavailable in this browser (WebGL needed). Play still works.</p>');
     }
-    return heroPreview;
+    return menuScene;
   }
 
   function focusCharacter(id, animate = true) {
@@ -263,7 +265,7 @@ export function initMenu(api) {
       const taken = selectedMode === '2p' && pickingFor === 'p2' && p1 === c.id;
       return `
       <button class="char-card ${isFocused ? 'focused' : ''} ${isP1 || isP2 ? 'selected' : ''} ${taken ? 'taken' : ''}" data-char="${c.id}" aria-pressed="${isP1 || isP2}" ${taken ? 'disabled' : ''}>
-        <span class="char-avatar${isLight(c.color) ? ' char-avatar--light' : ''}" style="--c:${c.color};--cd:${c.colorDark}">${c.initials}</span>
+        <span class="char-avatar${isLight(c.color) ? ' char-avatar--light' : ''}${c.id === 'rishu' ? ' char-avatar--photo' : ''}" style="--c:${c.color};--cd:${c.colorDark}">${c.id === 'rishu' ? `<img src="${RISHU_FACE_PORTRAIT}" alt="Rishu">` : c.initials}</span>
         ${tag ? `<span class="char-tag">${tag}</span>` : ''}
         ${isFocused ? '<span class="char-focus">Previewing</span>' : ''}
         <span class="char-name">${c.name}</span>
@@ -517,26 +519,29 @@ export function initMenu(api) {
   bind('foot-fighters', goFighters);
   bind('foot-arena', goArena);
   bind('foot-settings', () => openModal('modal-settings'));
-  bind('btn-arena-enter', () => show('modes'));
-
-  // Featured fighters strip: open character select focused on that fighter.
-  document.querySelectorAll('#featured-strip [data-char]').forEach((card) => {
-    card.addEventListener('click', () => {
-      openCharacterSelect('pvc');
-      focusCharacter(card.dataset.char);
-    });
-  });
-  // Strip scroll buttons (text arrows, not icons).
-  bind('featured-prev', () => {
-    const strip = $('featured-strip');
-    if (strip) strip.scrollBy({ left: -320, behavior: 'smooth' });
-  });
-  bind('featured-next', () => {
-    const strip = $('featured-strip');
-    if (strip) strip.scrollBy({ left: 320, behavior: 'smooth' });
-  });
-
+  // Build A removed the menu's mode-cards / arena-preview / featured-
+  // fighters sections (the menu is now the two-fighter scene + the four
+  // menu buttons). Their bindings went with them; Modes / Fighters /
+  // Arena are still reachable from the nav, the footer and screen-modes.
   bind('btn-play', () => show('modes'));
+  bind('btn-menu-settings', () => openModal('modal-settings'));
+  // QUIT (D-3): window.close() cannot close a tab the script did not
+  // open, so QUIT tries, then shows the honest fallback overlay.
+  bind('btn-menu-quit', () => {
+    try { window.close(); } catch (e) { /* browsers may block it */ }
+    const q = $('quit-overlay');
+    if (q) { q.classList.add('open'); q.setAttribute('aria-hidden', 'false'); }
+  });
+  bind('btn-quit-stay', () => {
+    const q = $('quit-overlay');
+    if (q) { q.classList.remove('open'); q.setAttribute('aria-hidden', 'true'); }
+  });
+  // Settings -> CPU difficulty lives on character select: a real row
+  // that takes the user there (difficulty itself is NOT in settings).
+  bind('btn-settings-goto-select', () => {
+    closeModal('modal-settings');
+    openCharacterSelect('pvc');
+  });
   bind('btn-modes', () => show('modes'));
   bind('btn-characters', () => openCharacterSelect('pvc'));
   bind('btn-how', () => openModal('modal-how'));
@@ -547,8 +552,6 @@ export function initMenu(api) {
   bind('btn-back-modes', () => show('modes'));
   bind('btn-back-arena', () => show('characters'));
 
-  bind('mode-pvc', () => openCharacterSelect('pvc'));
-  bind('mode-2p', () => openCharacterSelect('2p'));
   bind('mode-pvc-2', () => openCharacterSelect('pvc'));
   bind('mode-2p-2', () => openCharacterSelect('2p'));
   // Online: a disabled Coming Soon card in HTML — deliberately NO handler,
@@ -635,19 +638,39 @@ export function initMenu(api) {
       saveSettings(settings);
       if (api.onQualityChange) api.onQualityChange(settings.quality);
       if (preview) preview.setQuality(settings.quality);
-      if (heroPreview) heroPreview.setQuality(settings.quality);
       showToast(`Quality set to ${settings.quality}.`);
     });
   }
+  // SFX volume (Build A, D-5): honest slider, persisted, applied live
+  // to the arena via api.onVolumeChange (0–1). No music behind it.
+  const volumeSlider = $('setting-volume');
+  const volumeValue = $('setting-volume-value');
+  function applyVolume(v, { save = true, silent = false } = {}) {
+    const pct = Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+    settings.volume = pct;
+    if (save) saveSettings(settings);
+    if (volumeSlider) volumeSlider.value = String(pct);
+    if (volumeValue) volumeValue.textContent = `${pct}%`;
+    if (api.onVolumeChange) api.onVolumeChange(pct / 100);
+    if (!silent) showToast(`SFX volume ${pct}%.`);
+  }
+  if (volumeSlider) {
+    volumeSlider.value = String(settings.volume ?? 100);
+    if (volumeValue) volumeValue.textContent = `${settings.volume ?? 100}%`;
+    volumeSlider.addEventListener('input', () => applyVolume(volumeSlider.value, { silent: true }));
+    volumeSlider.addEventListener('change', () => applyVolume(volumeSlider.value));
+  }
   bind('btn-reset-settings', () => {
-    const fresh = { sound: true, quality: 'high' };
+    const fresh = { sound: true, quality: 'high', volume: 100 };
     Object.assign(settings, fresh);
     saveSettings(settings);
     if (soundToggle) soundToggle.checked = true;
     if (qualitySelect) qualitySelect.value = 'high';
+    if (volumeSlider) volumeSlider.value = '100';
+    if (volumeValue) volumeValue.textContent = '100%';
     if (api.onQualityChange) api.onQualityChange('high');
+    if (api.onVolumeChange) api.onVolumeChange(1);
     if (preview) preview.setQuality('high');
-    if (heroPreview) heroPreview.setQuality('high');
     showToast('Settings reset to defaults.');
   });
 
@@ -656,12 +679,12 @@ export function initMenu(api) {
   bind('btn-how-footer', () => openModal('modal-how'));
   bind('btn-phase2', () => openModal('modal-phase2'));
 
-  // Initial render (menu screen); the preview is created lazily on
-  // first open so the menu stays fast. The hero showcase starts now —
-  // it is the first thing on the menu screen.
+  // Initial render (menu screen); the character preview is created
+  // lazily on first open so the menu stays fast. The menu scene starts
+  // now — it is the first thing on the menu screen.
   focused = CHARACTERS[0].id;
   renderDetail(CHARACTERS[0]);
   renderGrid();
-  ensureHeroPreview();
+  ensureMenuScene();
   return { show, showToast, openCharacterSelect };
 }

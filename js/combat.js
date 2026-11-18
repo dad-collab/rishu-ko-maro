@@ -102,7 +102,7 @@ export function flashFighter(model, ms = 70) {
   model.group.traverse((o) => {
     if (o.material && o.material.emissive && !mats.includes(o.material)) {
       mats.push(o.material);
-      o.material.emissive.setHex(0xBC5222);
+      o.material.emissive.setHex(0xA855F7); // neon purple flash (Build A)
       o.material.emissiveIntensity = 0.55;
     }
   });

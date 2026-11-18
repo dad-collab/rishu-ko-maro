@@ -12,8 +12,9 @@
 //   break a match.
 // - Respects the Settings sound toggle: `enabled: false` silences
 //   everything (the arena passes settings.sound at createArena time).
-// - No sound lasts longer than ~0.35 s; no loops; master gain is low
-//   (0.5) so a flurry of hits never clips.
+// - No sound lasts longer than ~0.35 s; no loops; every sound routes
+//   through one master GainNode (SFX volume slider, Build A, default
+//   100%) so a flurry of hits never clips.
 
 const PROFILES = {
   punchLight: { type: 'thud', freq: 180, dur: 0.09, gain: 0.5, noise: 0.4 },
@@ -36,9 +37,11 @@ const PROFILES = {
   ultimate: { type: 'thud', freq: 100, dur: 0.35, gain: 0.85, noise: 0.6 },
 };
 
-export function createCombatAudio({ enabled = true } = {}) {
+export function createCombatAudio({ enabled = true, volume: initialVolume = 1 } = {}) {
   let ctx = null;
+  let master = null; // one master GainNode — every sound routes through it
   let on = !!enabled;
+  let volume = Math.max(0, Math.min(1, initialVolume));
 
   function ensureCtx() {
     if (ctx) return ctx;
@@ -47,8 +50,12 @@ export function createCombatAudio({ enabled = true } = {}) {
     if (!AC) return null;
     try {
       ctx = new AC();
+      master = ctx.createGain();
+      master.gain.value = volume;
+      master.connect(ctx.destination);
     } catch (e) {
       ctx = null;
+      master = null;
     }
     return ctx;
   }
@@ -63,7 +70,7 @@ export function createCombatAudio({ enabled = true } = {}) {
     osc.frequency.exponentialRampToValueAtTime(Math.max(30, p.freq * 0.6), t0 + p.dur);
     oscGain.gain.setValueAtTime(p.gain, t0);
     oscGain.gain.exponentialRampToValueAtTime(0.001, t0 + p.dur);
-    osc.connect(oscGain).connect(ctx.destination);
+    osc.connect(oscGain).connect(master);
     osc.start(t0);
     osc.stop(t0 + p.dur + 0.02);
     playNoise(p, t0);
@@ -86,7 +93,7 @@ export function createCombatAudio({ enabled = true } = {}) {
     const g = ctx.createGain();
     g.gain.setValueAtTime(p.gain * p.noise * 0.6, t0);
     g.gain.exponentialRampToValueAtTime(0.001, t0 + p.dur);
-    src.connect(filter).connect(g).connect(ctx.destination);
+    src.connect(filter).connect(g).connect(master);
     src.start(t0);
   }
 
@@ -100,7 +107,7 @@ export function createCombatAudio({ enabled = true } = {}) {
     osc.frequency.linearRampToValueAtTime(p.freq2 || p.freq * 2, t0 + p.dur);
     oscGain.gain.setValueAtTime(p.gain, t0);
     oscGain.gain.exponentialRampToValueAtTime(0.001, t0 + p.dur);
-    osc.connect(oscGain).connect(ctx.destination);
+    osc.connect(oscGain).connect(master);
     osc.start(t0);
     osc.stop(t0 + p.dur + 0.02);
     playNoise(p, t0);
@@ -123,6 +130,14 @@ export function createCombatAudio({ enabled = true } = {}) {
     },
     setEnabled(v) { on = !!v; },
     isEnabled: () => on,
+    // Build A (D-5): honest SFX volume slider (0–1). Applies to the
+    // master GainNode immediately; stored so a later-created context
+    // starts at the same level.
+    setVolume(v) {
+      volume = Math.max(0, Math.min(1, Number(v) || 0));
+      if (master) master.gain.value = volume;
+    },
+    getVolume: () => volume,
     dispose() {
       if (ctx) ctx.close().catch(() => {});
       ctx = null;

@@ -70,6 +70,8 @@ async function boot() {
   menu = initMenu({
     settings,
     onQualityChange: (q) => { if (arena) arena.setQuality(q); },
+    // Build A (D-5): SFX volume slider -> the arena's master gain.
+    onVolumeChange: (v) => { if (arena) arena.setVolume(v); },
     onRequestFullscreen: requestFullscreen,
     onEnterArena: (mode, charA, charB, opts) => {
       // Phase 6 — the 4th argument carries the match options
@@ -132,6 +134,10 @@ async function boot() {
     finishLoading();
     return;
   }
+
+  // Apply the saved SFX volume (Build A, D-5) — the arena defaults to
+  // 100% until told otherwise.
+  if (typeof settings.volume === 'number') arena.setVolume(settings.volume / 100);
 
   // Keep the fullscreen button label honest
   document.addEventListener('fullscreenchange', () => {

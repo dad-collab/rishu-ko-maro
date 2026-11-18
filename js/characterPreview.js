@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { buildFighterModel } from './fighterModels.js';
 import { createFighterAnimator } from './fighterAnimations.js';
+import { getEnvironmentMap, getContactShadowTexture } from './environment.js';
 
 const QUALITY = {
   low: { pixelRatio: 1, shadows: false },
@@ -44,8 +45,9 @@ export function createCharacterPreview(container, opts = {}) {
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0E1B2E);
-  scene.fog = new THREE.Fog(0x0E1B2E, 9, 16);
+  scene.background = new THREE.Color(0x0A0612);
+  scene.fog = new THREE.Fog(0x0A0612, 9, 16);
+  scene.environment = getEnvironmentMap(renderer); // G1: PMREM env, one-time cost
 
   const camera = new THREE.PerspectiveCamera(
     42,
@@ -55,27 +57,34 @@ export function createCharacterPreview(container, opts = {}) {
   camera.position.set(0, 1.7, 4.6);
   camera.lookAt(0, 1.15, 0);
 
-  // Lighting: soft key + steel rim, matching the arena's look.
+  // Lighting: soft key + purple rim, matching the arena's look.
   scene.add(new THREE.AmbientLight(0x8a93a8, 0.7));
   const key = new THREE.DirectionalLight(0xffffff, 2.0);
   key.position.set(4, 6, 4);
   key.castShadow = q.shadows;
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0x5B7A99, 0.9);
+  const rim = new THREE.DirectionalLight(0x7C3AED, 0.9);
   rim.position.set(-4, 3, -3);
   scene.add(rim);
 
-  // Ground disc + accent ring the fighter stands on.
-  const ground = new THREE.Mesh(
-    new THREE.CircleGeometry(1.5, 48),
-    new THREE.MeshStandardMaterial({ color: 0x16283F, roughness: 0.9 })
-  );
+  // Ground disc + accent ring the fighter stands on. G1: glossy floor
+  // (low roughness + env map) + a contact shadow under the fighter.
+  const groundMat = new THREE.MeshStandardMaterial({ color: 0x120A1E, roughness: 0.3, metalness: 0.1 });
+  groundMat.envMapIntensity = 1.4;
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(1.5, 48), groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
+  const contactShadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.1, 1.1),
+    new THREE.MeshBasicMaterial({ map: getContactShadowTexture(), transparent: true, depthWrite: false, opacity: 0.55 })
+  );
+  contactShadow.rotation.x = -Math.PI / 2;
+  contactShadow.position.y = 0.02;
+  scene.add(contactShadow);
   const ring = new THREE.Mesh(
     new THREE.TorusGeometry(1.05, 0.03, 8, 64),
-    new THREE.MeshStandardMaterial({ color: 0xBC5222, roughness: 0.4, metalness: 0.3 })
+    new THREE.MeshStandardMaterial({ color: 0xA855F7, roughness: 0.4, metalness: 0.3 })
   );
   ring.rotation.x = Math.PI / 2;
   ring.position.y = 0.02;
@@ -83,7 +92,7 @@ export function createCharacterPreview(container, opts = {}) {
   // Selection ring — pulses when a fighter is selected/confirmed.
   const selectRing = new THREE.Mesh(
     new THREE.TorusGeometry(1.22, 0.035, 8, 64),
-    new THREE.MeshBasicMaterial({ color: 0xBC5222, transparent: true, opacity: 0.25 })
+    new THREE.MeshBasicMaterial({ color: 0xA855F7, transparent: true, opacity: 0.25 })
   );
   selectRing.rotation.x = Math.PI / 2;
   selectRing.position.y = 0.02;

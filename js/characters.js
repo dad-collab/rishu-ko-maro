@@ -1,4 +1,7 @@
 // RISHU.COM — Phase 2 — characters.js
+// Neon Redesign (Build A): fighter colours re-themed to the purple + black
+// neon palette. Stats, moves and skins are unchanged, except Rishu's skin
+// tone, which is sampled from the user's photo (see rishuFace.js).
 // Six original fictional fighters. No copied characters, names, or likenesses.
 // Stats are 1–10: Strength, Speed, Defense, Special Power.
 // `model` drives the procedural 3D model in fighterModels.js:
@@ -26,11 +29,11 @@ export const CHARACTERS = [
     range: 6,
     difficulty: 'Easy',
     specialMove: 'Ember Rush',
-    color: '#BC5222', // burnt orange — the new RISHU.COM signature
-    colorDark: '#7E3410',
+    color: '#A855F7', // neon purple — the Neon Redesign signature
+    colorDark: '#7C3AED',
     initials: 'RI',
-    skin: 0x8a6a52,
-    model: { build: 'average', height: 1.0, hair: 'spiky', outfit: 'vest', accessory: 'headband' },
+    skin: 0x715341, // sampled from the user's photo (cheek average) — Build A
+    model: { build: 'average', height: 1.0, hair: 'spiky', hairColor: 0x14161a, outfit: 'vest', accessory: 'headband' },
   },
   {
     id: 'ayaan',
@@ -47,11 +50,11 @@ export const CHARACTERS = [
     range: 5,
     difficulty: 'Medium',
     specialMove: 'Storm Barrage',
-    color: '#E8E8EC',
+    color: '#E8E8EC', // silver-white — kept, reads on dark
     colorDark: '#8A8F9E',
     initials: 'AY',
     skin: 0x6b4a35,
-    model: { build: 'broad', height: 1.02, hair: 'mohawk', outfit: 'hoodie', accessory: 'wristbands' },
+    model: { build: 'broad', height: 1.02, hair: 'mohawk', hairColor: 0xE8E8EC, outfit: 'hoodie', accessory: 'wristbands' },
   },
   {
     id: 'kabir',
@@ -68,11 +71,11 @@ export const CHARACTERS = [
     range: 7,
     difficulty: 'Medium',
     specialMove: 'Iron Counter',
-    color: '#6E8CA8',
-    colorDark: '#3E5A75',
+    color: '#6D28D9', // deep violet — Neon Redesign
+    colorDark: '#4C1D95',
     initials: 'KA',
     skin: 0xa08060,
-    model: { build: 'broad', height: 1.06, hair: 'bald-beard', outfit: 'gi', accessory: 'belt' },
+    model: { build: 'broad', height: 1.06, hair: 'bald-beard', hairColor: 0x14161a, outfit: 'gi', accessory: 'belt' },
   },
   {
     id: 'zara',
@@ -89,11 +92,11 @@ export const CHARACTERS = [
     range: 6,
     difficulty: 'Hard',
     specialMove: 'Shadow Step',
-    color: '#A8B8CC',
-    colorDark: '#5A6B7E',
+    color: '#C026D3', // magenta-purple — Neon Redesign
+    colorDark: '#86198F',
     initials: 'ZA',
     skin: 0x7a5a44,
-    model: { build: 'slim', height: 0.97, hair: 'ponytail', outfit: 'tracksuit', accessory: 'sash' },
+    model: { build: 'slim', height: 0.97, hair: 'ponytail', hairColor: 0x14161a, outfit: 'tracksuit', accessory: 'sash' },
   },
   {
     id: 'dev',
@@ -110,11 +113,11 @@ export const CHARACTERS = [
     range: 6,
     difficulty: 'Medium',
     specialMove: 'Forge Slam',
-    color: '#C7CCD6',
-    colorDark: '#3F4654',
+    color: '#B8A8D9', // silver-lavender — Neon Redesign
+    colorDark: '#6B5B95',
     initials: 'DE',
     skin: 0x9a7a5e,
-    model: { build: 'broad', height: 1.1, hair: 'flat-top', outfit: 'armour', accessory: 'shoulder-pads' },
+    model: { build: 'broad', height: 1.1, hair: 'flat-top', hairColor: 0x8A8F9E, outfit: 'armour', accessory: 'shoulder-pads' },
   },
   {
     id: 'meera',
@@ -131,11 +134,11 @@ export const CHARACTERS = [
     range: 8,
     difficulty: 'Hard',
     specialMove: 'Cyclone Kick',
-    color: '#7C93B0',
-    colorDark: '#3E5A75',
+    color: '#818CF8', // violet-blue — Neon Redesign
+    colorDark: '#4F46E5',
     initials: 'ME',
     skin: 0x5e4232,
-    model: { build: 'tall', height: 1.05, hair: 'braid', outfit: 'dancer', accessory: 'scarf' },
+    model: { build: 'tall', height: 1.05, hair: 'braid', hairColor: 0x14161a, outfit: 'dancer', accessory: 'scarf' },
   },
 ];
 

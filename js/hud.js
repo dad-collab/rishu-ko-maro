@@ -1,6 +1,8 @@
+import { RISHU_FACE_PORTRAIT } from './rishuFace.js';
+
 // RISHU.COM — Visual Upgrade + Phase 5 — hud.js
 // Match HUD for the arena screen. DOM is built by this module (styled
-// with the redesigned navy/ivory/orange tokens — no hex colours here).
+// with the neon purple + black tokens — no hex colours here).
 // Visual Upgrade: the HUD is an OVERLAY on the canvas (mounted inside
 // the arena frame, opts.mountEl), not a bar above it — long health
 // bars draining toward a centre timer badge, names stacked ABOVE the
@@ -36,14 +38,15 @@
 
 // Light fighter colours (e.g. Ayaan) need dark initials to stay
 // readable — same luminance rule as the character cards in menu.js.
-// The two text colours come from the stylesheet tokens (--ink /
-// --ivory-050) at runtime, never as hardcoded hex in this module.
+// The two text colours come from the stylesheet tokens (--void / --ink)
+// at runtime, never as hardcoded hex in this module.
+
 function tokenColor(name, fallback) {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name);
   return (v && v.trim()) || fallback;
 }
-const INK = () => tokenColor('--ink', '#1B2A3D');
-const IVORY = () => tokenColor('--ivory-050', '#FFFDF6');
+const DARK = () => tokenColor('--void', '#0A0612');
+const LIGHT = () => tokenColor('--ink', '#F5F0FF');
 
 function isLight(hex) {
   if (!hex || hex[0] !== '#' || hex.length < 7) return false;
@@ -147,25 +150,43 @@ export function createHud(arenaScreenEl, { p1, p2, mode, onPause, onResume, onQu
     if (el) el.textContent = `${mm}:${ss}`;
   }
 
+  // Fighter icon: initials tile in the fighter's colour — except
+  // Rishu, whose icon is the user's photo (Build A, exact crop).
+  function renderIcon(icon, char) {
+    if (!icon || !char) return;
+    if (char.id === 'rishu') {
+      if (!icon.querySelector('img')) {
+        icon.classList.add('hud-icon--photo');
+        icon.innerHTML = '';
+        const img = document.createElement('img');
+        img.src = RISHU_FACE_PORTRAIT;
+        img.alt = 'Rishu';
+        icon.appendChild(img);
+      }
+      icon.style.background = '';
+      icon.style.color = '';
+      return;
+    }
+    if (icon.querySelector('img')) {
+      icon.classList.remove('hud-icon--photo');
+      icon.innerHTML = '';
+    }
+    icon.textContent = char.initials || '?';
+    icon.style.background = char.color || '';
+    icon.style.color = isLight(char.color) ? DARK() : LIGHT();
+  }
+
   function renderFighters() {
     const icon1 = $('p1-icon');
     const icon2 = $('p2-icon');
     const name1 = $('p1-name');
     const name2 = $('p2-name');
     if (currentP1) {
-      if (icon1) {
-        icon1.textContent = currentP1.initials || '?';
-        icon1.style.background = currentP1.color || '';
-        icon1.style.color = isLight(currentP1.color) ? INK() : IVORY();
-      }
+      renderIcon(icon1, currentP1);
       if (name1) name1.textContent = `P1 · ${currentP1.name}`;
     }
     if (currentP2) {
-      if (icon2) {
-        icon2.textContent = currentP2.initials || '?';
-        icon2.style.background = currentP2.color || '';
-        icon2.style.color = isLight(currentP2.color) ? INK() : IVORY();
-      }
+      renderIcon(icon2, currentP2);
       if (name2) name2.textContent = `${currentMode === '2p' ? 'P2' : 'CPU'} · ${currentP2.name}`;
     }
     const hint = $('pause-hint');

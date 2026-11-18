@@ -29,7 +29,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Restrained crowd palette (brand tokens + muted variation — no neon).
-const CROWD_COLORS = [0xFFFDF6, 0xF7F2E7, 0x5B7A99, 0x3E5A75, 0xBC5222, 0x2A3B52, 0x8A8F9E, 0xC9CDD3];
+const CROWD_COLORS = [0xF5F0FF, 0xB8A8D9, 0x7C3AED, 0x4C2D7A, 0xA855F7, 0x2E1B4D, 0x8A8F9E, 0xC9CDD3];
 
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -41,25 +41,28 @@ function mulberry32(seed) {
   };
 }
 
-function textTexture({ w = 512, h = 256, lines, bg = '#0E1B2E', fg = '#FFFDF6', accent = '#BC5222' }) {
+function textTexture({ w = 1024, h = 512, lines, bg = '#0A0612', fg = '#F5F0FF', accent = '#A855F7' }) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const g = c.getContext('2d');
   g.fillStyle = bg;
   g.fillRect(0, 0, w, h);
   g.fillStyle = accent;
-  g.fillRect(0, h - 10, w, 10);
+  g.fillRect(0, h - Math.round(h * 0.04), w, Math.round(h * 0.04));
   g.fillStyle = fg;
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   const n = lines.length;
+  // Font sizes scale with the canvas height (4K bar: the jumbotron is
+  // 1024x512 and the banners 512x1024 now) so the layout stays
+  // identical to the old 512x256 / 256x512 canvases, just sharper.
   lines.forEach((line, i) => {
-    g.font = `${i === 0 ? '900' : '700'} ${i === 0 ? 64 : 34}px "Archivo Black", Arial, sans-serif`;
+    g.font = `${i === 0 ? '900' : '700'} ${Math.round(h * (i === 0 ? 0.25 : 0.133))}px "Archivo Black", Arial, sans-serif`;
     g.fillText(line, w / 2, (h / (n + 1)) * (i + 1));
   });
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = 8;
   return tex;
 }
 
@@ -119,9 +122,9 @@ export function buildStadium(scene, { quality = 'high', crowdCount } = {}) {
   group.name = 'stadium';
   const disposables = [];
 
-  const navyMat = new THREE.MeshStandardMaterial({ color: 0x0A1424, roughness: 0.95, side: THREE.DoubleSide });
-  const navy2Mat = new THREE.MeshStandardMaterial({ color: 0x16283F, roughness: 0.9, side: THREE.DoubleSide });
-  const trimMat = new THREE.MeshStandardMaterial({ color: 0xBC5222, roughness: 0.5, metalness: 0.3 });
+  const navyMat = new THREE.MeshStandardMaterial({ color: 0x0A0612, roughness: 0.95, side: THREE.DoubleSide });
+  const navy2Mat = new THREE.MeshStandardMaterial({ color: 0x120A1E, roughness: 0.9, side: THREE.DoubleSide });
+  const trimMat = new THREE.MeshStandardMaterial({ color: 0xA855F7, roughness: 0.5, metalness: 0.3 });
 
   // ---- Tiered stands (lathe meshes + one nosing torus per ring) ----
   // Rings 0 and 2 share navyMat, so they merge into one draw call;
@@ -215,7 +218,7 @@ export function buildStadium(scene, { quality = 'high', crowdCount } = {}) {
   ];
   bannerPositions.forEach(([x, y, z, ry, h], i) => {
     const tex = textTexture({
-      w: 256, h: 512,
+      w: 512, h: 1024,
       lines: ['RISHU.COM', bannerNames[i % bannerNames.length]],
     });
     disposables.push(tex);
@@ -235,7 +238,7 @@ export function buildStadium(scene, { quality = 'high', crowdCount } = {}) {
   // stands (see the FRAMING note above: at z=-14 it was both above
   // the frame and occluded by the staircase). It reads as a big end
   // screen behind the ring, crowd visible above and around it.
-  let jumboTex = textTexture({ w: 512, h: 256, lines: ['RISHU.COM', '— vs —'] });
+  let jumboTex = textTexture({ w: 1024, h: 512, lines: ['RISHU.COM', '— vs —'] });
   disposables.push(jumboTex);
   const jumbo = new THREE.Mesh(
     new THREE.PlaneGeometry(6, 2.6),
@@ -248,7 +251,7 @@ export function buildStadium(scene, { quality = 'high', crowdCount } = {}) {
   group.add(jumbo);
   const jumboFrame = new THREE.Mesh(
     new THREE.BoxGeometry(6.4, 3.0, 0.15),
-    new THREE.MeshStandardMaterial({ color: 0x16283F, roughness: 0.4, metalness: 0.5 }),
+    new THREE.MeshStandardMaterial({ color: 0x120A1E, roughness: 0.4, metalness: 0.5 }),
   );
   jumboFrame.position.set(0, 1.4, -7.15);
   group.add(jumboFrame);
@@ -256,13 +259,13 @@ export function buildStadium(scene, { quality = 'high', crowdCount } = {}) {
   // ---- Light rig: truss + visible cones (additive, no light) ----
   // The 4 cones share one geometry + material and merge into a single
   // draw call (same draw-call merge as the stands above).
-  const trussMat = new THREE.MeshStandardMaterial({ color: 0x1E334E, roughness: 0.4, metalness: 0.6 });
+  const trussMat = new THREE.MeshStandardMaterial({ color: 0x2E1B4D, roughness: 0.4, metalness: 0.6 });
   const truss = new THREE.Mesh(new THREE.TorusGeometry(6.5, 0.12, 8, 48), trussMat);
   truss.rotation.x = Math.PI / 2;
   truss.position.y = 8.5;
   group.add(truss);
   const coneMat = new THREE.MeshBasicMaterial({
-    color: 0xdfe8ff, transparent: true, opacity: 0.05,
+    color: 0xE9D5FF, transparent: true, opacity: 0.05,
     blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
   });
   group.add(mergedMesh(
@@ -274,7 +277,7 @@ export function buildStadium(scene, { quality = 'high', crowdCount } = {}) {
   ));
 
   // Warm wash over the far crowd (no shadows).
-  const wash = new THREE.PointLight(0xffd9a0, 12, 30, 1.8);
+  const wash = new THREE.PointLight(0xC084FC, 12, 30, 1.8);
   wash.position.set(0, 6, -12);
   group.add(wash);
 
@@ -312,7 +315,7 @@ export function buildStadium(scene, { quality = 'high', crowdCount } = {}) {
   function setMatchup(charA, charB) {
     const a = charA ? charA.name || 'P1' : 'P1';
     const b = charB ? charB.name || 'P2' : 'P2';
-    const next = textTexture({ w: 512, h: 256, lines: ['RISHU.COM', `${a}  vs  ${b}`] });
+    const next = textTexture({ w: 1024, h: 512, lines: ['RISHU.COM', `${a}  vs  ${b}`] });
     const old = jumboTex;
     jumbo.material.map = next;
     jumbo.material.emissiveMap = next;
